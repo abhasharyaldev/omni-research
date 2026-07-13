@@ -8,3 +8,4 @@ export * from "./discovery.js";
 export * from "./preview.js";
 export * from "./reconcile.js";
 export * from "./health.js";
+export * from "./binary-exporters.js";

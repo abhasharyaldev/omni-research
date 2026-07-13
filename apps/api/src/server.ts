@@ -18,6 +18,7 @@ import { registerMiscRoutes } from "./routes/misc.js";
 import { registerSearchRoutes } from "./routes/search.js";
 import { registerStoryRoutes } from "./routes/stories.js";
 import { registerAnalystRoutes } from "./routes/analyst.js";
+import { registerWorkspaceRoutes } from "./routes/workspace.js";
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -94,6 +95,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerSearchRoutes(app);
   await registerStoryRoutes(app);
   await registerAnalystRoutes(app);
+  await registerWorkspaceRoutes(app);
 
   return app;
 }

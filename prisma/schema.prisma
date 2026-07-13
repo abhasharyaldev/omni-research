@@ -94,6 +94,8 @@ model Project {
   newsEvents    NewsEvent[]
   exports       Export[]
   stories       Story[]
+  timelineEvents TimelineEvent[]
+  importJobs     ImportJob[]
 
   @@index([ownerId, updatedAt])
 }
@@ -309,6 +311,7 @@ model Evidence {
   subquestion Subquestion?   @relation(fields: [subquestionId], references: [id], onDelete: SetNull)
   claimLinks  ClaimEvidence[]
   citations   Citation[]
+  notes       Note[]
 
   @@index([projectId])
   @@index([runId])
@@ -327,6 +330,7 @@ model Claim {
 
   project  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   evidence ClaimEvidence[]
+  notes    Note[]
 
   @@index([projectId])
 }
@@ -363,6 +367,7 @@ model Report {
   run      ResearchRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
   sections ReportSection[]
   citations Citation[]
+  notes    Note[]
 
   @@index([projectId, createdAt])
 }
@@ -413,17 +418,29 @@ model Note {
   id        String   @id
   projectId String
   sourceId  String?
+  evidenceId String?
+  claimId    String?
+  reportId   String?
+  storySceneRef String? // "storyId:sceneIndex" — scenes live in StoryVersion JSON
   title     String?
   contentMd String
   kind      String   @default("note") // note | quote | paraphrase | user-authored
+  tags      Json     @default("[]")
+  pinned    Boolean  @default(false)
+  archived  Boolean  @default(false)
+  quotedText     String? // verbatim selection preserved from the source
+  sourceLocation String? // e.g. "paragraph 4" / "page 2"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   searchVector Unsupported("tsvector")?
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  source  Source? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source   Source?   @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  evidence Evidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+  claim    Claim?    @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  report   Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
 
-  @@index([projectId])
+  @@index([projectId, archived, pinned, updatedAt])
 }
 
 model Tag {
@@ -790,4 +807,64 @@ model StoryLockedFact {
   story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@unique([storyId, evidenceRef])
+}
+
+// ---------------------------------------------------------------------------
+// Research workspace: timeline + universal import
+// ---------------------------------------------------------------------------
+
+model TimelineEvent {
+  id        String   @id
+  projectId String
+  type      String // project-created | run-started | run-completed | run-failed | source-added | note-created | note-updated | report-generated | export-created | story-generated | import-completed | import-failed | claim-created
+  actor     String   @default("user") // user | system
+  entityType String? // source | note | report | run | story | import | claim
+  entityId  String?
+  summary   String
+  metaJson  Json?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([projectId, type, createdAt])
+}
+
+model ImportJob {
+  id          String   @id
+  projectId   String
+  userId      String
+  kind        String // pasted-text | url-list | markdown | plain-text | csv | tsv
+  status      String   @default("preview-ready") // parsing | preview-ready | importing | completed | completed-with-warnings | failed | cancelled
+  filename    String?
+  mimeType    String?
+  byteSize    Int      @default(0)
+  checksum    String? // sha256 of the raw input (idempotency + dedup)
+  previewJson Json?
+  optionsJson Json?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items   ImportItem[]
+
+  @@index([projectId, createdAt])
+  @@unique([projectId, checksum, kind])
+}
+
+model ImportItem {
+  id        String  @id
+  jobId     String
+  index     Int     @default(0)
+  status    String  @default("pending") // pending | imported | skipped-duplicate | failed
+  title     String?
+  detail    String?
+  sourceId  String?
+  noteId    String?
+  provenanceJson Json?
+
+  job ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, index])
 }

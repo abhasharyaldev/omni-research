@@ -139,6 +139,8 @@ function ReportPageInner() {
             }}
           >
             <option value="" disabled>Export…</option>
+            <option value="docx">Word (.docx)</option>
+            <option value="pdf">PDF (.pdf)</option>
             <option value="markdown">Markdown</option>
             <option value="html">HTML (print to PDF)</option>
             <option value="json">JSON archive</option>

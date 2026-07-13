@@ -151,7 +151,7 @@ export const quizSubmitSchema = z.object({
 });
 
 export const exportSchema = z.object({
-  format: z.enum(["markdown", "html", "json", "csv-sources", "csv-flashcards", "bibliography"]),
+  format: z.enum(["markdown", "html", "json", "csv-sources", "csv-flashcards", "bibliography", "docx", "pdf"]),
   citationStyle: citationStyleSchema.optional(),
 });
 

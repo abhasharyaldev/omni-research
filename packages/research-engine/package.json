@@ -16,11 +16,14 @@
     "@omni/database": "workspace:*",
     "@omni/security": "workspace:*",
     "@omni/shared": "workspace:*",
-    "zod": "^3.24.0"
+    "zod": "^3.24.0",
+    "docx": "^9.5.0",
+    "pdfkit": "^0.15.2"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",
-    "@types/node": "^22.13.0"
+    "@types/node": "^22.13.0",
+    "@types/pdfkit": "^0.13.9"
   }
 }

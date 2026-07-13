@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { getPrisma } from "@omni/database";
+import { getPrisma, recordTimelineEvent } from "@omni/database";
 import { exportSchema, newId, type CitationStyle } from "@omni/shared";
-import { buildExport } from "@omni/research-engine";
+import { buildDocxExport, buildPdfExport, buildExport } from "@omni/research-engine";
 import { requireUser } from "../auth.js";
 import { ApiHttpError, audit, requireProject } from "../util.js";
 
@@ -62,6 +62,18 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
     const { id } = request.params as { id: string };
     await requireProject(id, user.id);
     const input = exportSchema.parse(request.body);
+    if (input.format === "docx" || input.format === "pdf") {
+      const builder = input.format === "docx" ? buildDocxExport : buildPdfExport;
+      const binary = await builder(prisma, id, input.citationStyle as CitationStyle | undefined);
+      await prisma.export.create({
+        data: { id: newId("exp"), projectId: id, format: input.format, settingsJson: { filename: binary.filename, bytes: binary.buffer.length } },
+      });
+      await recordTimelineEvent(prisma, { projectId: id, type: "export-created", summary: `Export created (${input.format})`, entityType: "report" });
+      await audit(user.id, "project.export", "project", id, request, { format: input.format });
+      reply.header("content-type", binary.mimeType);
+      reply.header("content-disposition", `attachment; filename="${binary.filename}"`);
+      return reply.send(binary.buffer);
+    }
     const result = await buildExport(prisma, id, input.format, input.citationStyle as CitationStyle | undefined);
     await prisma.export.create({
       data: {

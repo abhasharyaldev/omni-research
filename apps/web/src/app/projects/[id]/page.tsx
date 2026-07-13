@@ -67,6 +67,9 @@ export default function ProjectPage() {
         <div className="ml-auto flex gap-2">
           <Link href={`/projects/${id}/sources`} className="btn">Source library ({project._count.sources})</Link>
           <Link href={`/projects/${id}/story`} className="btn">Story studio</Link>
+          <Link href={`/projects/${id}/notebook`} className="btn">Notebook</Link>
+          <Link href={`/projects/${id}/import`} className="btn">Import</Link>
+          <Link href={`/projects/${id}/timeline`} className="btn">Timeline</Link>
           {project.reports?.length > 0 && <Link href={`/projects/${id}/report`} className="btn">Report</Link>}
           <button
             className="btn btn-danger"

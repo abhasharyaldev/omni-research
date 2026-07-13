@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { getPrisma } from "@omni/database";
+import { getPrisma, recordTimelineEvent } from "@omni/database";
 import {
   clampCrawlLimits,
   createProjectSchema,
@@ -50,6 +50,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       },
       include: { topics: true },
     });
+    await recordTimelineEvent(prisma, { projectId: project.id, type: "project-created", summary: `Project created: ${project.title}` });
     await audit(user.id, "project.create", "project", project.id, request);
     return { project };
   });
@@ -202,6 +203,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         data: { excludeDomains: input.planOverrides.excludeDomains },
       });
     }
+    await recordTimelineEvent(prisma, { projectId: id, type: "run-started", summary: "Research run started", entityType: "run", entityId: run.id });
     await audit(user.id, "run.start", "research-run", run.id, request);
     return { run };
   });

@@ -4,3 +4,4 @@ export * from "./safe-fetch.js";
 export * from "./redaction.js";
 export * from "./env-filter.js";
 export * from "./prompt-safety.js";
+export * from "./file-safety.js";

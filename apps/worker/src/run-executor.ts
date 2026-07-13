@@ -1,4 +1,4 @@
-import { getPrisma, type PrismaClient } from "@omni/database";
+import { getPrisma, type PrismaClient, recordTimelineEvent } from "@omni/database";
 import { getProviderManager } from "@omni/ai-providers";
 import { newId, type ProgressEvent, type ResearchStage } from "@omni/shared";
 import { redactSecrets } from "@omni/security";
@@ -75,6 +75,7 @@ export async function executeRun(prisma: PrismaClient, runId: string): Promise<v
       where: { id: runId },
       data: { status: "completed", finishedAt: new Date(), cancelRequested: false },
     });
+    await recordTimelineEvent(prisma, { projectId: run.projectId, type: "run-completed", actor: "system", summary: "Research run completed", entityType: "run", entityId: runId });
   } catch (err) {
     if (err instanceof RunCancelledError) {
       const run = await prisma.researchRun.findUnique({ where: { id: runId }, select: { error: true } });
@@ -106,6 +107,10 @@ export async function executeRun(prisma: PrismaClient, runId: string): Promise<v
       where: { id: runId },
       data: { status: "failed", finishedAt: new Date(), error: message },
     });
+    const failedRun = await prisma.researchRun.findUnique({ where: { id: runId }, select: { projectId: true } });
+    if (failedRun) {
+      await recordTimelineEvent(prisma, { projectId: failedRun.projectId, type: "run-failed", actor: "system", summary: `Research run failed: ${message.slice(0, 120)}`, entityType: "run", entityId: runId });
+    }
     await prisma.runEvent.create({
       data: {
         id: newId("ev"),
