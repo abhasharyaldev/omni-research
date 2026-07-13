@@ -8,7 +8,7 @@ import { apiGet, apiPost, downloadExport } from "@/lib/api";
 import { Markdown } from "@/components/markdown";
 import { ReportSearchBar } from "@/components/report-search";
 
-const TABS = ["report", "evidence", "sources", "news", "fact-check", "log"] as const;
+const TABS = ["report", "claims", "matrix", "evidence", "sources", "news", "fact-check", "log"] as const;
 type Tab = (typeof TABS)[number];
 
 function ReportPageInner() {
@@ -23,6 +23,8 @@ function ReportPageInner() {
   const [claimsInput, setClaimsInput] = useState("");
   const [factResults, setFactResults] = useState<any[] | null>(null);
   const [factBusy, setFactBusy] = useState(false);
+  const [claimStatus, setClaimStatus] = useState("");
+  const [claimKind, setClaimKind] = useState("");
   const reportBodyRef = useRef<HTMLDivElement>(null);
 
   const { data: reportData, isLoading } = useQuery({
@@ -47,6 +49,24 @@ function ReportPageInner() {
   const { data: projectData } = useQuery({
     queryKey: ["project", id],
     queryFn: () => apiGet<{ project: any }>(`/api/projects/${id}`),
+  });
+
+  const { data: healthData } = useQuery({
+    queryKey: ["health", id],
+    queryFn: () => apiGet<{ health: any; stored: boolean }>(`/api/projects/${id}/health`),
+  });
+  const { data: ledgerData } = useQuery({
+    queryKey: ["claim-ledger", id, claimStatus, claimKind],
+    queryFn: () =>
+      apiGet<{ claims: any[] }>(
+        `/api/projects/${id}/claim-ledger?${new URLSearchParams({ ...(claimStatus ? { status: claimStatus } : {}), ...(claimKind ? { kind: claimKind } : {}) })}`
+      ),
+    enabled: tab === "claims",
+  });
+  const { data: matrixData } = useQuery({
+    queryKey: ["evidence-matrix", id],
+    queryFn: () => apiGet<{ matrix: any[]; overall: string }>(`/api/projects/${id}/evidence-matrix`),
+    enabled: tab === "matrix",
   });
 
   const report = reportData?.report;
@@ -132,6 +152,29 @@ function ReportPageInner() {
         </div>
       </div>
 
+      {healthData?.health && (
+        <div className="panel mt-3 flex flex-wrap items-center gap-2 px-4 py-2 text-xs" title={(healthData.health.reasons ?? []).join("\n")}>
+          <span className="font-semibold">Research health:</span>
+          <span className={`badge ${healthData.health.overall === "high" ? "badge-good" : healthData.health.overall === "low" ? "badge-bad" : "badge-warn"}`}>
+            confidence {healthData.health.overall}
+          </span>
+          <span className={`badge ${healthData.health.citationsVerified ? "badge-good" : "badge-bad"}`}>
+            {healthData.health.citationCount} citations {healthData.health.citationsVerified ? "verified" : "UNVERIFIED"}
+          </span>
+          <span className="badge">coverage {healthData.health.coveredSubquestions}/{healthData.health.totalSubquestions} subquestions</span>
+          <span className="badge">{healthData.health.sourceCount} sources · {healthData.health.distinctDomains} domains</span>
+          <span className="badge">avg quality {healthData.health.avgSourceQuality}/100</span>
+          <span className="badge">{healthData.health.primaryOfficialCount} primary/official</span>
+          {healthData.health.unresolvedDisagreementCount > 0 && (
+            <span className="badge badge-warn">{healthData.health.unresolvedDisagreementCount} unresolved disagreement(s)</span>
+          )}
+          {healthData.health.weakClaimCount > 0 && (
+            <span className="badge badge-warn">{healthData.health.weakClaimCount} weak/unsupported claim(s)</span>
+          )}
+          <span style={{ color: "var(--muted)" }}>deterministic — hover for scoring reasons</span>
+        </div>
+      )}
+
       <div className="mt-4 flex gap-1 border-b" style={{ borderColor: "var(--line)" }}>
         {TABS.map((t) => (
           <button
@@ -155,7 +198,7 @@ function ReportPageInner() {
           )}
           {report?.sections?.map((section: any) => (
             <section key={section.id} className="panel p-5">
-              <h2 className="mb-2 text-lg font-bold">{section.title}</h2>
+              <h2 className="mb-2 text-lg font-bold">{section.title} <span className="badge ml-1 align-middle">{section.kind}</span></h2>
               <Markdown content={section.contentMd} onCitationClick={setDrawerMarker} highlight={findQuery} />
             </section>
           ))}
@@ -205,6 +248,95 @@ function ReportPageInner() {
           ))}
           {evidenceData?.evidence?.length === 0 && (
             <p className="p-6 text-center text-sm" style={{ color: "var(--muted)" }}>No evidence records yet.</p>
+          )}
+        </div>
+      )}
+
+      {tab === "claims" && (
+        <div className="mt-5 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <select className="select w-auto" value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)} aria-label="Filter by status">
+              <option value="">all statuses</option>
+              {["well-supported", "mostly-supported", "partially-supported", "disputed", "weakly-supported", "unsupported", "outdated", "unable-to-verify"].map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+            <select className="select w-auto" value={claimKind} onChange={(e) => setClaimKind(e.target.value)} aria-label="Filter by kind">
+              <option value="">all kinds</option>
+              {["fact", "opinion", "inference", "uncertain"].map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          {(ledgerData?.claims ?? []).map((claim: any) => (
+            <div key={claim.id} className="panel p-4 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">{claim.text}</p>
+                <span className="badge">{claim.statementKind}</span>
+                {claim.verificationStatus && (
+                  <span className={`badge ${["well-supported", "mostly-supported"].includes(claim.verificationStatus) ? "badge-good" : ["disputed", "unsupported"].includes(claim.verificationStatus) ? "badge-bad" : "badge-warn"}`}>
+                    {claim.verificationStatus}
+                  </span>
+                )}
+                <span className="badge ml-auto">best source {claim.bestSourceQuality}/100</span>
+              </div>
+              {claim.statusExplanation && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{claim.statusExplanation}</p>}
+              {[["Supporting", claim.supporting, "badge-good"], ["Opposing", claim.opposing, "badge-bad"], ["Contextual", claim.contextual, ""]].map(([label, rows, cls]: any) =>
+                rows.length > 0 ? (
+                  <div key={label} className="mt-2 text-xs">
+                    <span className={`badge ${cls}`}>{label} ({rows.length})</span>
+                    {rows.map((row: any, i: number) => (
+                      <p key={i} className="mt-1 pl-2" style={{ color: "var(--muted)" }}>
+                        “{row.excerpt}” — <a className="underline" href={row.source.finalUrl ?? row.source.url} target="_blank" rel="noopener noreferrer nofollow">{row.source.title ?? row.source.url}</a>
+                        {" "}({row.source.classification}, {row.source.qualityScore}/100)
+                        {row.citations.map((c: any) => (
+                          <button key={c.marker} className="citation-marker ml-1" onClick={() => setDrawerMarker(c.marker)}>[{c.marker}]</button>
+                        ))}
+                      </p>
+                    ))}
+                  </div>
+                ) : null
+              )}
+            </div>
+          ))}
+          {ledgerData?.claims?.length === 0 && (
+            <p className="p-6 text-center text-sm" style={{ color: "var(--muted)" }}>
+              No claims match. Claims come from disagreement reconciliation and the fact-check tab.
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "matrix" && (
+        <div className="mt-5 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr style={{ color: "var(--muted)" }}>
+                <th className="py-2 pr-3">Subquestion</th>
+                <th className="py-2 pr-3">Supporting</th>
+                <th className="py-2 pr-3">Opposing</th>
+                <th className="py-2 pr-3">Strongest source</th>
+                <th className="py-2 pr-3">Weakest gap</th>
+                <th className="py-2">Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(matrixData?.matrix ?? []).map((row: any) => (
+                <tr key={row.subquestionId} className="border-t align-top" style={{ borderColor: "var(--line)" }}>
+                  <td className="max-w-xs py-2 pr-3">{row.text}</td>
+                  <td className="py-2 pr-3">{row.evidenceCount} ({row.strongCount} strong{row.supportingCount ? `, ${row.supportingCount} claim-linked` : ""})</td>
+                  <td className="py-2 pr-3">{row.opposingCount}</td>
+                  <td className="py-2 pr-3">
+                    {row.strongestSource ? `${row.strongestSource.title} (${row.strongestSource.qualityScore}/100, ${row.strongestSource.classification})` : "—"}
+                  </td>
+                  <td className="py-2 pr-3" style={{ color: "var(--muted)" }}>{row.weakestGap}</td>
+                  <td className="py-2">
+                    <span className={`badge ${row.confidence === "high" ? "badge-good" : row.confidence === "low" ? "badge-bad" : "badge-warn"}`}>{row.confidence}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {matrixData?.matrix?.length === 0 && (
+            <p className="p-6 text-center text-sm" style={{ color: "var(--muted)" }}>No completed run with subquestions yet.</p>
           )}
         </div>
       )}

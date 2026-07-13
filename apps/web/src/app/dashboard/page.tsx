@@ -16,6 +16,11 @@ export default function DashboardPage() {
     enabled: Boolean(me?.user),
     refetchInterval: 5000,
   });
+  const { data: watchlistData } = useQuery({
+    queryKey: ["watchlist"],
+    queryFn: () => apiGet<{ watchlist: any[] }>("/api/watchlist"),
+    enabled: Boolean(me?.user),
+  });
   const { data: providers } = useQuery({
     queryKey: ["providers"],
     queryFn: () => apiGet<{ providers: any[]; defaultProvider: string }>("/api/providers"),
@@ -65,6 +70,24 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {(watchlistData?.watchlist ?? []).length > 0 && (
+        <>
+          <h2 className="mb-3 mt-8 text-sm font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+            Watchlist — what to refresh
+          </h2>
+          <div className="grid gap-2">
+            {watchlistData!.watchlist.map((item) => (
+              <Link key={item.id} href={`/projects/${item.id}`} className="panel flex flex-wrap items-center gap-3 px-4 py-3 hover:opacity-80">
+                <span className="font-semibold">{item.title}</span>
+                <span className="badge">{item.watchCadence}</span>
+                {item.due && <span className="badge badge-warn">refresh due</span>}
+                <span className="ml-auto text-xs" style={{ color: "var(--muted)" }}>{item.refreshHint}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
 
       <h2 className="mb-3 mt-8 text-sm font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
         Projects

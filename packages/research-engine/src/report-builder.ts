@@ -288,6 +288,11 @@ export async function synthesizeAndVerify(args: SynthesizeArgs): Promise<string>
     }
   }
 
+  // Deterministic research health, stored with the report (auditable, no AI).
+  const { computeResearchHealth } = await import("./health.js");
+  const health = await computeResearchHealth(prisma, project.id, runId);
+  await prisma.report.update({ where: { id: report.id }, data: { healthJson: health as object } });
+
   await deps.emit("verifying-citations", `Verified ${counters.citations} citation(s)`, counters);
   return report.id;
 }

@@ -3,7 +3,7 @@ import { fenceExcerpts } from "@omni/security";
 import type { PrismaClient } from "@omni/database";
 import type { AiTaskKind, ProviderManager, StructuredSchema } from "@omni/ai-providers";
 import { detectStorytellingSkills, type DetectedSkill, type SkillDetectionReport } from "./skill-detection.js";
-import { buildResearchPackage, renderPackageForPrompt, type ResearchPackage } from "./research-package.js";
+import { buildResearchPackage, renderPackageForPrompt } from "./research-package.js";
 import {
   BLUEPRINT_SCHEMA_DESCRIPTION,
   CRITIQUE_SCHEMA_DESCRIPTION,

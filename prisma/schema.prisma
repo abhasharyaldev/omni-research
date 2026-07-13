@@ -74,6 +74,10 @@ model Project {
   updatedAt      DateTime  @updatedAt
   retentionDays  Int       @default(30)
   storeFullText  Boolean   @default(false)
+  watched        Boolean   @default(false)
+  watchCadence   String    @default("manual") // manual | daily | weekly | monthly
+  lastCheckedAt  DateTime?
+  nextCheckAt    DateTime?
   searchVector   Unsupported("tsvector")?
 
   owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -351,6 +355,7 @@ model Report {
   providerUsed   String?
   modelUsed      String?
   verifiedAt     DateTime?
+  healthJson     Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

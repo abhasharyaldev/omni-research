@@ -178,6 +178,44 @@ export default function ProjectPage() {
           </div>
 
           <div className="panel p-5 text-sm">
+            <h2 className="font-semibold">Watchlist</h2>
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+              Monitor this project and get a suggested refresh cadence. Refreshing reuses the normal
+              research-run flow — no background jobs.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={Boolean(project.watched)}
+                  onChange={async (e) => {
+                    await apiPost(`/api/projects/${id}/watch`, { watched: e.target.checked, cadence: project.watchCadence ?? "manual" });
+                    await queryClient.invalidateQueries({ queryKey: ["project", id] });
+                  }}
+                />
+                monitored
+              </label>
+              <select
+                className="select w-auto"
+                value={project.watchCadence ?? "manual"}
+                aria-label="Refresh cadence"
+                onChange={async (e) => {
+                  await apiPost(`/api/projects/${id}/watch`, { watched: true, cadence: e.target.value });
+                  await queryClient.invalidateQueries({ queryKey: ["project", id] });
+                }}
+              >
+                {["manual", "daily", "weekly", "monthly"].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {project.nextCheckAt && (
+                <span className="badge">next check {new Date(project.nextCheckAt).toLocaleDateString()}</span>
+              )}
+              {project.lastCheckedAt && (
+                <span className="badge" style={{ color: "var(--muted)" }}>last checked {new Date(project.lastCheckedAt).toLocaleDateString()}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="panel p-5 text-sm">
             <h2 className="font-semibold">Settings snapshot</h2>
             <dl className="mt-2 grid grid-cols-2 gap-1" style={{ color: "var(--muted)" }}>
               <dt>Citation style</dt><dd>{project.citationStyle}</dd>

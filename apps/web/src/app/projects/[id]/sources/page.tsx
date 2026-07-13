@@ -94,6 +94,12 @@ export default function SourceLibraryPage() {
               <span className="badge">{source.classification}</span>
               <span className={`badge ${source.qualityScore >= 65 ? "badge-good" : source.qualityScore < 45 ? "badge-warn" : ""}`}>{source.qualityScore}/100</span>
               {source.status !== "retrieved" && <span className="badge badge-warn">{source.status}</span>}
+              {["primary-source", "government", "peer-reviewed"].includes(source.classification) && (
+                <span className="badge badge-good">primary/official</span>
+              )}
+              {source.isOpinion && <span className="badge badge-warn">opinion</span>}
+              {source.publishedAt && <span className="badge">pub {new Date(source.publishedAt).toLocaleDateString()}</span>}
+              {source.retrievedAt && <span className="badge">ret {new Date(source.retrievedAt).toLocaleDateString()}</span>}
               {source.duplicateOfId && <span className="badge badge-warn">duplicate</span>}
               {source._count?.duplicates > 0 && <span className="badge">{source._count.duplicates} duplicate(s) grouped</span>}
               <span className="ml-auto text-xs" style={{ color: "var(--muted)" }}>
