@@ -43,22 +43,53 @@ all on your machine, **without any paid API keys**.
   (no Docker needed; data lives in `.local-data/postgres`)
 - Redis is optional (a database-backed local queue is used by default)
 
-## Quickstart
+## Clone and run
 
 ```bash
+git clone https://github.com/<your-username>/omni-research.git
+cd omni-research
+cp .env.example .env       # optional to edit now; sensible defaults work out of the box
+corepack enable            # or: npm i -g pnpm@10   (ensures the pinned pnpm is available)
 pnpm install
-pnpm setup:crawlee        # clone + verify official Crawlee, pin release, fixture crawl
-pnpm setup                # full first-run wizard (add --demo for a demo cited report)
-
-# Optional: real PostgreSQL/Redis instead of the embedded fallback
-docker compose up -d
-pnpm db:migrate
-
-pnpm db:seed -- --run     # demo user + project + a real cited demo report
-pnpm dev                  # web http://localhost:3000, api http://127.0.0.1:4000, worker
+pnpm setup                 # first-run wizard: verifies toolchain + Crawlee, prepares the
+                           # embedded database, detects AI providers, runs a fixture crawl
 ```
 
-Sign in with the demo account: `demo@omniresearch.local` / `demo-password-123`.
+`.env` is git-ignored and never committed, so after cloning you always start from
+`.env.example`. No values are required for local use — PostgreSQL falls back to an embedded
+instance under `.local-data/`, and the offline mock provider needs no login.
+
+Then start everything and open the app:
+
+```bash
+pnpm db:seed -- --run      # optional: demo user + project + a real cited demo report
+pnpm dev                   # web http://localhost:3000 · api 127.0.0.1:4000 · worker
+```
+
+Open **http://localhost:3000**, create an account (or use the seeded demo login
+`demo@omniresearch.local` / `demo-password-123`), and you're running.
+
+### Connect your AI provider (this is what makes reports genuinely good)
+
+The default **mock** provider is offline and only *assembles* source sentences — fine for a
+demo, not real synthesis. To get real research quality, connect a tool you already have:
+
+1. Make sure one of these is installed and logged in on your machine (no API keys needed):
+   `claude` (Claude Code), `codex` (Codex CLI), `gemini` (Gemini CLI), or a local **Ollama**
+   (`ollama serve` + `ollama pull llama3.1`).
+2. In the app: **Settings → AI providers → Check**, then **Test connection**, then **Set default**.
+3. New projects will use it. See [docs/provider-setup.md](docs/provider-setup.md) for per-tool steps
+   and billing-safety notes (subscription auth only — API-key env vars are never forwarded).
+
+### Optional extras
+
+```bash
+docker compose up -d       # real PostgreSQL + Redis instead of the embedded fallback
+pnpm db:migrate            # apply migrations to that database
+```
+
+Optional web-search discovery: set `BRAVE_SEARCH_API_KEY` (or `GOOGLE_CSE_API_KEY` +
+`GOOGLE_CSE_ID`) in `.env`. Keyless discovery (URLs, RSS, sitemaps, page links) works without it.
 
 ### Everyday commands
 
@@ -157,4 +188,5 @@ DOCX/direct-PDF export are provided via HTML/Markdown (print to PDF).
 
 ## License
 
-Local personal use. Crawlee is © Apify, Apache-2.0, used unmodified from the official repository.
+[MIT](LICENSE) — free to use, modify, and share. Crawlee is © Apify, Apache-2.0, used unmodified
+via its official npm package; other dependencies retain their own licenses.
