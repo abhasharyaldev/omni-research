@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f8f9fb;
+  --panel: #ffffff;
+  --ink: #16181d;
+  --muted: #5c6470;
+  --line: #e3e6eb;
+  --accent: #2f5fde;
+  --accent-ink: #ffffff;
+  --good: #167a4b;
+  --warn: #a05b0e;
+  --bad: #b3352e;
+}
+
+.dark {
+  --bg: #101318;
+  --panel: #181c24;
+  --ink: #e8eaf0;
+  --muted: #9aa3b2;
+  --line: #2a3140;
+  --accent: #6b8ff2;
+  --accent-ink: #0d1220;
+  --good: #4cc38a;
+  --warn: #e0a458;
+  --bad: #e5736c;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+.btn-danger { color: var(--bad); }
+
+.input, .select, .textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+}
+.input:focus, .select:focus, .textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge-good { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.badge-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.badge-bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.badge-accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+
+.prose-omni {
+  line-height: 1.65;
+  font-size: 0.95rem;
+}
+.prose-omni h1, .prose-omni h2, .prose-omni h3 {
+  font-weight: 700;
+  margin: 1.2em 0 0.5em;
+}
+.prose-omni h1 { font-size: 1.35rem; }
+.prose-omni h2 { font-size: 1.15rem; }
+.prose-omni h3 { font-size: 1rem; }
+.prose-omni p { margin: 0.6em 0; }
+.prose-omni ul, .prose-omni ol { margin: 0.6em 0 0.6em 1.4em; list-style: disc; }
+.prose-omni ol { list-style: decimal; }
+.prose-omni code {
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+}
+.prose-omni blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.9em;
+  color: var(--muted);
+  margin: 0.8em 0;
+}
+.prose-omni a { color: var(--accent); text-decoration: underline; }
+
+.citation-marker {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.8em;
+  vertical-align: super;
+}
+
+.search-mark {
+  background: color-mix(in srgb, var(--warn) 35%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.search-mark.active {
+  outline: 2px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 55%, transparent);
+}
+
+kbd {
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.72rem;
+  font-family: ui-monospace, monospace;
+  background: color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.skeleton {
+  border-radius: 0.5rem;
+  background: linear-gradient(90deg, var(--line), color-mix(in srgb, var(--line) 40%, transparent), var(--line));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

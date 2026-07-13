@@ -1,0 +1,23 @@
+{
+  "name": "@omni/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@omni/shared": "workspace:*",
+    "@prisma/client": "^6.3.0",
+    "embedded-postgres": "18.4.0-beta.17"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.13.0"
+  }
+}

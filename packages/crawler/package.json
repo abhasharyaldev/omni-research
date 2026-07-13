@@ -1,0 +1,29 @@
+{
+  "name": "@omni/crawler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@omni/security": "workspace:*",
+    "@omni/shared": "workspace:*",
+    "@mozilla/readability": "^0.6.0",
+    "cheerio": "^1.0.0",
+    "crawlee": "^3.17.0",
+    "linkedom": "^0.18.13",
+    "robots-parser": "^3.0.1",
+    "rss-parser": "^3.13.0",
+    "unpdf": "^1.6.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.13.0"
+  }
+}

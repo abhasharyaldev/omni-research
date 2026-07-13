@@ -1,0 +1,26 @@
+{
+  "name": "@omni/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@omni/ai-providers": "workspace:*",
+    "@omni/crawler": "workspace:*",
+    "@omni/database": "workspace:*",
+    "@omni/news-engine": "workspace:*",
+    "@omni/research-engine": "workspace:*",
+    "@omni/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.13.0"
+  }
+}

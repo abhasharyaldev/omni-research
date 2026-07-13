@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/apify/crawlee",
+  "tag": "v3.17.0",
+  "commit": "cacad22ea8cfbdceccdbd9fa31d9caa59719cf3b",
+  "packageVersion": "3.17.0",
+  "retrievedAt": "2026-07-12T18:41:31.151Z",
+  "installationMethod": "official npm package `crawlee` pinned via pnpm-lock.yaml; GitHub clone at the matching release tag kept in vendor/crawlee for origin verification and source auditing"
+}

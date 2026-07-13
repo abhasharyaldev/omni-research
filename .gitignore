@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+.env
+.env.local
+.local-data/
+.local-ai-workspaces/
+storage/
+crawlee-storage/
+vendor/crawlee/
+playwright-report/
+test-results/

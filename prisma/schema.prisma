@@ -1,0 +1,709 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  role         String   @default("user")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions        Session[]
+  projects        Project[]
+  memberships     ProjectMember[]
+  auditLogs       AuditLog[]
+  defaultProvider String          @default("mock")
+  settings        Json?
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  userAgent String?
+  ip        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Projects & research
+// ---------------------------------------------------------------------------
+
+model Project {
+  id             String    @id
+  ownerId        String
+  title          String
+  mode           String // deep-research | learn-subject | learn-skill | news-catchup | fact-check | school-project
+  prompt         String
+  status         String    @default("active") // active | archived
+  gradeLevel     String?
+  expertiseLevel String?
+  audience       String?
+  region         String?
+  dateRangeStart DateTime?
+  dateRangeEnd   DateTime?
+  maxSources     Int?
+  citationStyle  String    @default("web")
+  outputFormat   String?
+  startingUrls   Json      @default("[]")
+  includeDomains Json      @default("[]")
+  excludeDomains Json      @default("[]")
+  assignment     String?
+  rubric         String?
+  crawlLimits    Json?
+  provider       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  retentionDays  Int       @default(30)
+  storeFullText  Boolean   @default(false)
+  searchVector   Unsupported("tsvector")?
+
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members       ProjectMember[]
+  topics        Topic[]
+  runs          ResearchRun[]
+  sources       Source[]
+  evidence      Evidence[]
+  claims        Claim[]
+  reports       Report[]
+  notes         Note[]
+  collections   Collection[]
+  learningPlans LearningPlan[]
+  newsEvents    NewsEvent[]
+  exports       Export[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model ProjectMember {
+  id        String   @id
+  projectId String
+  userId    String
+  role      String   @default("viewer") // owner | editor | viewer
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Topic {
+  id        String   @id
+  projectId String
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  subquestions Subquestion[]
+  evidence     Evidence[]
+
+  @@index([projectId])
+}
+
+model ResearchRun {
+  id             String    @id
+  projectId      String
+  status         String    @default("queued") // queued | running | paused | cancelled | failed | completed
+  stage          String    @default("understanding-request")
+  planJson       Json?
+  limitsJson     Json?
+  providerUsed   String?
+  modelUsed      String?
+  error          String?
+  cancelRequested Boolean  @default(false)
+  countersJson   Json?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  subquestions  Subquestion[]
+  queries       DiscoveryQuery[]
+  crawlRequests CrawlRequest[]
+  evidence      Evidence[]
+  reports       Report[]
+  events        RunEvent[]
+
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+model RunEvent {
+  id        String   @id
+  runId     String
+  stage     String
+  message   String?
+  dataJson  Json?
+  createdAt DateTime @default(now())
+
+  run ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+}
+
+model Subquestion {
+  id        String   @id
+  runId     String
+  topicId   String?
+  text      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  run      ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  topic    Topic?      @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  evidence Evidence[]
+
+  @@index([runId])
+}
+
+model DiscoveryQuery {
+  id         String   @id
+  runId      String
+  query      String
+  providerId String
+  results    Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  run ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
+model CrawlRequest {
+  id            String   @id
+  runId         String
+  url           String
+  normalizedUrl String
+  parentUrl     String?
+  depth         Int      @default(0)
+  priority      Int      @default(0)
+  discoveredBy  String   @default("user")
+  status        String   @default("queued") // queued | crawling | retrieved | skipped | failed
+  skipReason    String?
+  failureReason String?
+  retryCount    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  run ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, normalizedUrl])
+  @@index([runId, status])
+}
+
+model Source {
+  id             String    @id
+  projectId      String
+  url            String
+  finalUrl       String?
+  canonicalUrl   String?
+  normalizedUrl  String
+  title          String?
+  author         String?
+  publisher      String?
+  siteName       String?
+  language       String?
+  contentType    String?
+  crawlMethod    String?
+  status         String    @default("retrieved") // retrieved | failed | skipped | archived
+  failureReason  String?
+  publishedAt    DateTime?
+  modifiedAt     DateTime?
+  retrievedAt    DateTime?
+  wordCount      Int       @default(0)
+  pageCount      Int?
+  contentHash    String?
+  classification String    @default("unknown")
+  qualityScore   Int       @default(50)
+  scoreReasons   Json      @default("[]")
+  isOpinion      Boolean   @default(false)
+  paywallFlag    Boolean   @default(false)
+  duplicateOfId  String?
+  headings       Json      @default("[]")
+  excerpt        String?
+  discoveredBy   String    @default("user")
+  retentionUntil DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  searchVector   Unsupported("tsvector")?
+
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  duplicateOf Source?          @relation("Duplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates  Source[]         @relation("Duplicates")
+  snapshots   SourceSnapshot[]
+  evidence    Evidence[]
+  citations   Citation[]
+  tags        SourceTag[]
+  collections CollectionSource[]
+  newsLinks   NewsArticleLink[]
+  notes       Note[]
+
+  @@unique([projectId, normalizedUrl])
+  @@index([projectId, qualityScore])
+  @@index([contentHash])
+}
+
+model SourceSnapshot {
+  id          String   @id
+  sourceId    String
+  kind        String   @default("main-text") // main-text | page-texts | raw-html
+  contentText String
+  pageTexts   Json?
+  bytes       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+}
+
+model Evidence {
+  id               String    @id
+  projectId        String
+  runId            String
+  sourceId         String
+  topicId          String?
+  subquestionId    String?
+  claim            String
+  evidenceText     String
+  sourceLocation   String?
+  pageNumber       Int?
+  sourcePublishedAt DateTime?
+  relevanceScore   Float     @default(0.5)
+  evidenceStrength String    @default("moderate")
+  evidenceType     String    @default("finding")
+  flaggedInjection Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  searchVector     Unsupported("tsvector")?
+
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  run         ResearchRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  source      Source         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  topic       Topic?         @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  subquestion Subquestion?   @relation(fields: [subquestionId], references: [id], onDelete: SetNull)
+  claimLinks  ClaimEvidence[]
+  citations   Citation[]
+
+  @@index([projectId])
+  @@index([runId])
+  @@index([sourceId])
+}
+
+model Claim {
+  id                 String   @id
+  projectId          String
+  text               String
+  statementKind      String   @default("fact") // fact | opinion | inference | uncertain
+  verificationStatus String? // well-supported .. unable-to-verify
+  statusExplanation  String?
+  createdAt          DateTime @default(now())
+  searchVector       Unsupported("tsvector")?
+
+  project  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  evidence ClaimEvidence[]
+
+  @@index([projectId])
+}
+
+model ClaimEvidence {
+  id         String @id
+  claimId    String
+  evidenceId String
+  stance     String @default("supports") // supports | opposes | contextual
+
+  claim    Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, evidenceId])
+}
+
+model Report {
+  id             String   @id
+  projectId      String
+  runId          String?
+  title          String
+  format         String   @default("markdown")
+  citationStyle  String   @default("web")
+  methodology    String?
+  limitations    String?
+  providerUsed   String?
+  modelUsed      String?
+  verifiedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  run      ResearchRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
+  sections ReportSection[]
+  citations Citation[]
+
+  @@index([projectId, createdAt])
+}
+
+model ReportSection {
+  id        String   @id
+  reportId  String
+  kind      String   @default("body") // executive-summary | findings | background | analysis | comparison | statistics | perspectives | timeline | limitations | open-questions | conclusion | sources | methodology | body
+  title     String
+  contentMd String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  searchVector Unsupported("tsvector")?
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, order])
+}
+
+model Citation {
+  id            String   @id
+  reportId      String
+  sourceId      String
+  evidenceId    String?
+  marker        Int
+  quotedText    String?
+  locator       String?
+  pageNumber    Int?
+  verified      Boolean  @default(false)
+  verifyNote    String?
+  createdAt     DateTime @default(now())
+  searchVector  Unsupported("tsvector")?
+
+  report   Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  source   Source    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  evidence Evidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  @@unique([reportId, marker])
+  @@index([sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Library organization
+// ---------------------------------------------------------------------------
+
+model Note {
+  id        String   @id
+  projectId String
+  sourceId  String?
+  title     String?
+  contentMd String
+  kind      String   @default("note") // note | quote | paraphrase | user-authored
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  searchVector Unsupported("tsvector")?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source  Source? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+}
+
+model Tag {
+  id      String @id
+  ownerId String
+  name    String
+
+  sources SourceTag[]
+
+  @@unique([ownerId, name])
+}
+
+model SourceTag {
+  sourceId String
+  tagId    String
+
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([sourceId, tagId])
+}
+
+model Collection {
+  id        String   @id
+  projectId String
+  name      String
+  createdAt DateTime @default(now())
+
+  project Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sources CollectionSource[]
+
+  @@index([projectId])
+}
+
+model CollectionSource {
+  collectionId String
+  sourceId     String
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  source     Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Learning system
+// ---------------------------------------------------------------------------
+
+model LearningPlan {
+  id            String    @id
+  projectId     String
+  subject       String
+  kind          String    @default("school-subject") // school-subject | practical-skill
+  currentLevel  String?
+  targetLevel   String?
+  deadline      DateTime?
+  hoursPerWeek  Float     @default(5)
+  knownTopics   Json      @default("[]")
+  difficultTopics Json    @default("[]")
+  learningStyle String?
+  status        String    @default("active")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project  Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  units    LearningUnit[]
+  mastery  MasteryRecord[]
+  reviews  ReviewSchedule[]
+  skillProjects SkillProject[]
+
+  @@index([projectId])
+}
+
+model LearningUnit {
+  id        String   @id
+  planId    String
+  title     String
+  summary   String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  plan    LearningPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  @@index([planId, order])
+}
+
+model Lesson {
+  id             String   @id
+  unitId         String
+  title          String
+  objective      String?
+  prerequisites  Json     @default("[]")
+  whyItMatters   String?
+  contentMd      String // full lesson body (explanations, examples, mistakes, applications)
+  estimatedMinutes Int    @default(30)
+  masteryCriteria String?
+  order          Int      @default(0)
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  unit      LearningUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  exercises Exercise[]
+  quizzes   Quiz[]
+
+  @@index([unitId, order])
+}
+
+model Exercise {
+  id        String  @id
+  lessonId  String
+  kind      String  @default("guided") // guided | independent
+  prompt    String
+  solutionMd String?
+  order     Int     @default(0)
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+}
+
+model Quiz {
+  id        String   @id
+  lessonId  String?
+  planScope String? // "cumulative" quizzes attach at plan scope via lessonId=null + planId in metaJson
+  title     String
+  metaJson  Json?
+  createdAt DateTime @default(now())
+
+  lesson    Lesson?        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+}
+
+model QuizQuestion {
+  id           String @id
+  quizId       String
+  prompt       String
+  kind         String @default("short-answer") // short-answer | multiple-choice
+  choices      Json?
+  correctAnswer String
+  explanation  String?
+  conceptKey   String?
+  order        Int    @default(0)
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+}
+
+model QuizAttempt {
+  id          String   @id
+  quizId      String
+  answersJson Json
+  score       Float    @default(0)
+  feedbackJson Json?
+  createdAt   DateTime @default(now())
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId, createdAt])
+}
+
+model MasteryRecord {
+  id         String   @id
+  planId     String
+  conceptKey String
+  mastery    Float    @default(0) // 0..1
+  attempts   Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  plan LearningPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, conceptKey])
+}
+
+model ReviewSchedule {
+  id         String   @id
+  planId     String
+  conceptKey String
+  dueAt      DateTime
+  intervalDays Float  @default(1)
+  ease       Float    @default(2.5)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  plan LearningPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, conceptKey])
+  @@index([planId, dueAt])
+}
+
+model SkillProject {
+  id          String   @id
+  planId      String
+  title       String
+  brief       String
+  rubricJson  Json?
+  milestone   Boolean  @default(false)
+  completedAt DateTime?
+  order       Int      @default(0)
+
+  plan LearningPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, order])
+}
+
+// ---------------------------------------------------------------------------
+// News
+// ---------------------------------------------------------------------------
+
+model NewsEvent {
+  id          String    @id
+  projectId   String
+  headline    String
+  summaryMd   String?
+  whyItMatters String?
+  whatChanged String?
+  eventDate   DateTime?
+  confidence  String    @default("medium") // low | medium | high
+  createdAt   DateTime  @default(now())
+
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  articles NewsArticleLink[]
+
+  @@index([projectId, eventDate])
+}
+
+model NewsArticleLink {
+  id          String    @id
+  eventId     String
+  sourceId    String
+  publishedAt DateTime?
+  isSyndicated Boolean  @default(false)
+  framingNote String?
+
+  event  NewsEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  source Source    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Exports, audit, providers
+// ---------------------------------------------------------------------------
+
+model Export {
+  id         String   @id
+  projectId  String
+  format     String
+  filePath   String?
+  contentText String?
+  settingsJson Json?
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  detailJson Json?
+  requestId String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
+model ProviderConnectionStatus {
+  id           String   @id
+  providerId   String   @unique
+  installed    Boolean  @default(false)
+  version      String?
+  authenticated Boolean @default(false)
+  statusCode   String   @default("not-installed")
+  detail       String?
+  capabilities Json?
+  lastCheckedAt DateTime @default(now())
+}

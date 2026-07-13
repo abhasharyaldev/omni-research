@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Learning Research Journal</title>
+    <link>http://127.0.0.1:4799/</link>
+    <description>Fixture feed for OmniResearch tests</description>
+    <item>
+      <title>Spaced repetition and long-term retention</title>
+      <link>http://127.0.0.1:4799/articles/spaced-repetition.html</link>
+      <pubDate>Tue, 02 Jun 2026 09:00:00 GMT</pubDate>
+      <description>How spacing study sessions improves memory retention.</description>
+    </item>
+    <item>
+      <title>The science of effective studying</title>
+      <link>http://127.0.0.1:4799/articles/learning-science.html</link>
+      <pubDate>Mon, 15 Jun 2026 10:30:00 GMT</pubDate>
+      <description>Retrieval practice, spacing, and interleaving beat re-reading.</description>
+    </item>
+    <item>
+      <title>Study tips roundup</title>
+      <link>http://127.0.0.1:4799/articles/injection-attempt.html</link>
+      <pubDate>Sat, 20 Jun 2026 08:00:00 GMT</pubDate>
+      <description>Daily study habits and breaks.</description>
+    </item>
+  </channel>
+</rss>

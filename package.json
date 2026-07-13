@@ -1,0 +1,57 @@
+{
+  "name": "omni-research",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "setup": "tsx scripts/setup-wizard.ts",
+    "setup:crawlee": "tsx scripts/setup-crawlee.ts",
+    "fixtures:serve": "tsx fixtures/serve-fixtures.ts",
+    "verify:crawlee": "tsx scripts/verify-crawlee.ts",
+    "check:providers": "tsx scripts/check-ai-providers.ts",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
+    "db:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+    "db:seed": "tsx scripts/seed.ts",
+    "dev": "pnpm --parallel --filter @omni/api --filter @omni/worker --filter @omni/web dev",
+    "dev:api": "pnpm --filter @omni/api dev",
+    "dev:worker": "pnpm --filter @omni/worker dev",
+    "dev:web": "pnpm --filter @omni/web dev",
+    "start": "pnpm --parallel --filter @omni/api --filter @omni/worker --filter @omni/web start",
+    "test": "pnpm -r --no-bail test",
+    "test:e2e": "pnpm --filter @omni/web test:e2e",
+    "test:provider:codex": "tsx scripts/provider-smoke.ts codex-cli",
+    "test:provider:claude": "tsx scripts/provider-smoke.ts claude-code",
+    "test:provider:gemini": "tsx scripts/provider-smoke.ts gemini-cli",
+    "test:provider:ollama": "tsx scripts/provider-smoke.ts ollama",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit -p tsconfig.scripts.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "build": "pnpm typecheck && pnpm --filter @omni/web build"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.3.0",
+    "@omni/ai-providers": "workspace:*",
+    "@omni/crawler": "workspace:*",
+    "@omni/database": "workspace:*",
+    "@omni/research-engine": "workspace:*",
+    "@omni/security": "workspace:*",
+    "@omni/shared": "workspace:*",
+    "bcryptjs": "^3.0.2",
+    "crawlee": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "eslint": "^9.20.0",
+    "typescript-eslint": "^8.24.0",
+    "prettier": "^3.5.0",
+    "prisma": "^6.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

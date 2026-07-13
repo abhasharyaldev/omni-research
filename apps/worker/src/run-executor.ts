@@ -1,0 +1,118 @@
+import { getPrisma, type PrismaClient } from "@omni/database";
+import { getProviderManager } from "@omni/ai-providers";
+import { newId, type ProgressEvent, type ResearchStage } from "@omni/shared";
+import { redactSecrets } from "@omni/security";
+import { RunCancelledError, runResearchPipeline, type PipelineDeps } from "@omni/research-engine";
+import { buildNewsBriefing } from "@omni/news-engine";
+
+/**
+ * Claim one queued run (atomically) and execute the pipeline for it.
+ * Returns true when a run was claimed.
+ */
+export async function claimAndExecuteRun(prisma: PrismaClient = getPrisma()): Promise<boolean> {
+  const candidate = await prisma.researchRun.findFirst({
+    where: { status: "queued" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (!candidate) return false;
+
+  const claimed = await prisma.researchRun.updateMany({
+    where: { id: candidate.id, status: "queued" },
+    data: { status: "running", startedAt: new Date(), error: null },
+  });
+  if (claimed.count !== 1) return false; // lost the race to another worker
+
+  await executeRun(prisma, candidate.id);
+  return true;
+}
+
+export async function executeRun(prisma: PrismaClient, runId: string): Promise<void> {
+  const providers = getProviderManager();
+
+  const emit: PipelineDeps["emit"] = async (
+    stage: ResearchStage,
+    message: string,
+    counters: ProgressEvent["counters"],
+    extra?: Record<string, unknown>
+  ) => {
+    await prisma.researchRun.update({
+      where: { id: runId },
+      data: {
+        stage,
+        countersJson: counters as object,
+        ...(extra?.provider ? { providerUsed: String(extra.provider) } : {}),
+      },
+    });
+    await prisma.runEvent.create({
+      data: { id: newId("ev"), runId, stage, message: message.slice(0, 900), dataJson: (extra as object) ?? undefined },
+    });
+    console.log(`[worker] run ${runId} :: ${stage} :: ${message}`);
+  };
+
+  const isCancelled = async () => {
+    const row = await prisma.researchRun.findUnique({
+      where: { id: runId },
+      select: { cancelRequested: true },
+    });
+    return Boolean(row?.cancelRequested);
+  };
+
+  try {
+    await runResearchPipeline({ prisma, providers, emit, isCancelled, storageRoot: ".local-data" }, runId);
+
+    // Post-pipeline step for news projects: cluster + timeline.
+    const run = await prisma.researchRun.findUniqueOrThrow({ where: { id: runId }, include: { project: true } });
+    if (run.project.mode === "news-catchup") {
+      await prisma.newsEvent.deleteMany({ where: { projectId: run.projectId } });
+      await buildNewsBriefing(prisma, providers, run.projectId);
+      await prisma.runEvent.create({
+        data: { id: newId("ev"), runId, stage: "complete", message: "News briefing clustered and summarized" },
+      });
+    }
+
+    await prisma.researchRun.update({
+      where: { id: runId },
+      data: { status: "completed", finishedAt: new Date(), cancelRequested: false },
+    });
+  } catch (err) {
+    if (err instanceof RunCancelledError) {
+      const run = await prisma.researchRun.findUnique({ where: { id: runId }, select: { error: true } });
+      const paused = run?.error === "pause-requested";
+      await prisma.researchRun.update({
+        where: { id: runId },
+        data: {
+          status: paused ? "paused" : "cancelled",
+          finishedAt: paused ? null : new Date(),
+          cancelRequested: false,
+          error: null,
+        },
+      });
+      await prisma.runEvent.create({
+        data: {
+          id: newId("ev"),
+          runId,
+          stage: "complete",
+          message: paused
+            ? "Run paused at a stage boundary. Completed work is saved; resume to continue."
+            : "Run cancelled. All completed work (sources, evidence) is saved.",
+        },
+      });
+      return;
+    }
+    const message = redactSecrets((err as Error).message ?? "unknown error").slice(0, 1900);
+    console.error(`[worker] run ${runId} failed:`, message);
+    await prisma.researchRun.update({
+      where: { id: runId },
+      data: { status: "failed", finishedAt: new Date(), error: message },
+    });
+    await prisma.runEvent.create({
+      data: {
+        id: newId("ev"),
+        runId,
+        stage: "complete",
+        message: `Run failed: ${message}. Work completed before the failure (sources, evidence) is preserved.`,
+      },
+    });
+  }
+}

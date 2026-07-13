@@ -1,0 +1,25 @@
+{
+  "name": "@omni/news-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@omni/ai-providers": "workspace:*",
+    "@omni/database": "workspace:*",
+    "@omni/research-engine": "workspace:*",
+    "@omni/shared": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.13.0"
+  }
+}

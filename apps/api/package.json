@@ -1,0 +1,35 @@
+{
+  "name": "@omni/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.0",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/helmet": "^13.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@omni/ai-providers": "workspace:*",
+    "@omni/crawler": "workspace:*",
+    "@omni/database": "workspace:*",
+    "@omni/learning-engine": "workspace:*",
+    "@omni/news-engine": "workspace:*",
+    "@omni/research-engine": "workspace:*",
+    "@omni/security": "workspace:*",
+    "@omni/shared": "workspace:*",
+    "bcryptjs": "^3.0.2",
+    "fastify": "^5.2.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.13.0"
+  }
+}
