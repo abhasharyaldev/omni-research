@@ -66,6 +66,10 @@ async function startEmbedded(): Promise<string> {
     password: "postgres",
     port: EMBEDDED_DB_PORT,
     persistent: true,
+    // UTF8 always: Windows initdb otherwise defaults to the system codepage
+    // (e.g. WIN1252), which cannot store non-Latin research text (Devanagari,
+    // CJK, arrows, …). locale=C keeps initdb deterministic across machines.
+    initdbFlags: ["--encoding=UTF8", "--locale=C"],
   });
   const alreadyInitialized = existsSync(path.join(dataDir, "PG_VERSION"));
   if (!alreadyInitialized) {

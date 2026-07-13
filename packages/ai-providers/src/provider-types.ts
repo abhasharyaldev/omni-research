@@ -39,6 +39,12 @@ export type AiTaskKind =
   | "quiz-feedback"
   | "gap-analysis"
   | "reconciliation"
+  | "story-blueprint"
+  | "story-outline"
+  | "story-hooks"
+  | "story-scenes"
+  | "story-script"
+  | "story-critique"
   | "generic";
 
 export type GenerateTextRequest = {

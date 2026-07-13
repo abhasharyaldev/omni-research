@@ -150,6 +150,16 @@ sitemaps, and links discovered on approved pages**. Optionally, supply a `BRAVE_
 results are labeled with their provider, and every report's methodology section states exactly
 what was searched. Web search is never required for core functionality.
 
+## Story studio (storytelling skill integration)
+
+Each project has a **Story studio** that turns verified research into video scripts. It detects a
+locally installed Claude storytelling skill (`~/.claude/skills/storytelling/SKILL.md` or the
+project-level equivalent) and follows its instructions verbatim on every generation — recording the
+skill hash, provider, and research-package version per invocation. Without the skill it runs a
+clearly-labeled built-in fallback. Every factual line stays linked to evidence refs; deterministic
+validation (invented citations, altered numbers, invented quotes, sensational language, locked-fact
+protection) gates the "validated" status. See [docs/storytelling.md](docs/storytelling.md).
+
 ## Monorepo layout
 
 ```

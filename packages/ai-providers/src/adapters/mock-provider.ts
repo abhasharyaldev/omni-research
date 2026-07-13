@@ -104,6 +104,13 @@ export class MockProvider implements SubscriptionAIProvider {
         return this.gapAnalysis(ctx);
       case "reconciliation":
         return this.reconciliation(ctx);
+      case "story-blueprint":
+      case "story-outline":
+      case "story-hooks":
+      case "story-scenes":
+      case "story-script":
+      case "story-critique":
+        return this.story(request.taskKind, ctx);
       case "generic":
       default:
         return `Mock provider response for: ${request.instructions.slice(0, 160)}`;
@@ -368,6 +375,161 @@ export class MockProvider implements SubscriptionAIProvider {
           confidenceNote: "Mechanical comparison by the mock provider; connect a real AI provider for substantive reconciliation.",
         };
       }),
+    };
+  }
+
+  /**
+   * Deterministic storytelling outputs assembled ONLY from the research
+   * package in ctx (evidence refs are echoed, never invented). Used for
+   * tests and offline demos of the story workflow.
+   */
+  private story(kind: string, ctx: Record<string, unknown>): unknown {
+    const evidence = Array.isArray(ctx.evidence) ? (ctx.evidence as { ref: string; claim: string; excerpt: string; sourceTitle?: string }[]) : [];
+    const settings = (ctx.settings ?? {}) as Record<string, unknown>;
+    const framework = String(ctx.framework ?? "three-act");
+    const topic = String(ctx.projectTitle ?? "the topic");
+    const first = evidence[0];
+    const refs = (n: number) => evidence.slice(0, n).map((e) => e.ref);
+
+    if (kind === "story-blueprint") {
+      return {
+        framework,
+        frameworkReason: `Mock provider echoes the pre-selected framework "${framework}"; connect a real provider for judgment-based structuring.`,
+        centralQuestion: `What does the verified evidence show about ${topic}?`,
+        viewerPromise: "A walk through what the collected sources actually establish — nothing beyond them.",
+        mainSubject: topic,
+        mainConflict: evidence.length > 1 ? `What the evidence establishes vs. what remains open about ${topic}` : `Understanding ${topic} from limited evidence`,
+        stakes: "",
+        setting: "",
+        people: [],
+        startingSituation: { text: first?.claim ?? "Evidence collection begins.", evidenceRefs: refs(1) },
+        triggeringEvent: { text: evidence[1]?.claim ?? first?.claim ?? "The first finding.", evidenceRefs: refs(2).slice(-1) },
+        escalation: evidence.slice(2, 4).map((e) => ({ text: e.claim, evidenceRefs: [e.ref] })),
+        turningPoints: [],
+        keyDiscoveries: evidence.slice(0, 3).map((e) => ({ text: e.claim, evidenceRefs: [e.ref] })),
+        contradictions: [],
+        climax: { text: evidence[Math.max(0, evidence.length - 1)]?.claim ?? "The strongest finding.", evidenceRefs: evidence.length ? [evidence[evidence.length - 1]!.ref] : [] },
+        resolution: { text: "The evidence, taken together, answers the central question within its limits.", evidenceRefs: refs(2) },
+        remainingUncertainty: "Anything outside the research package remains unknown.",
+        mainLesson: "",
+        finalTakeaway: first ? `${first.claim}` : "See the collected evidence.",
+        callToAction: "",
+        storyLens: "Evidence-first walkthrough (mock mode — no unique lens is generated).",
+      };
+    }
+    if (kind === "story-outline") {
+      return {
+        sections: [
+          {
+            title: "Opening",
+            purpose: "Set the question",
+            beats: [{ text: `What do we actually know about ${topic}?`, connector: "opening", evidenceRefs: [], kind: "question" }],
+            estimatedSeconds: 15,
+          },
+          {
+            title: "What the evidence shows",
+            purpose: "Present findings",
+            beats: evidence.slice(0, 6).map((e, i) => ({
+              text: e.claim,
+              connector: i % 2 === 0 ? "therefore" : "but",
+              evidenceRefs: [e.ref],
+              kind: "fact",
+            })),
+            estimatedSeconds: 60,
+          },
+          {
+            title: "Takeaway",
+            purpose: "Close the loop",
+            beats: [{ text: "The verified evidence supports these findings and nothing more.", connector: "therefore", evidenceRefs: refs(2), kind: "fact" }],
+            estimatedSeconds: 15,
+          },
+        ],
+        retentionPlan: [
+          { technique: "open question", placement: "opening", payoffAt: "takeaway section", informationUsed: "central question" },
+        ],
+      };
+    }
+    if (kind === "story-hooks") {
+      return {
+        hooks: evidence.slice(0, 3).map((e, i) => ({
+          text: e.claim,
+          type: (["question", "contrast", "discovery"] as const)[i % 3],
+          intendedEmotion: "curiosity",
+          factualBasis: e.claim,
+          evidenceRefs: [e.ref],
+          audienceFit: "States a verified finding directly (mock mode).",
+          exaggerationRisk: "none",
+          saferAlternative: "",
+        })),
+      };
+    }
+    if (kind === "story-scenes") {
+      return {
+        scenes: evidence.slice(0, 6).map((e) => ({
+          goal: `Convey: ${e.claim.slice(0, 120)}`,
+          narration: e.claim,
+          mainClaim: e.claim,
+          evidenceRefs: [e.ref],
+          visualSuggestion: "text animation of the key phrase over a neutral background",
+          visualSourceNote: "generated text animation — no license risk",
+          emotionalPurpose: "clarity",
+          transition: "cut",
+          estimatedSeconds: 12,
+          confidence: "medium",
+          accuracyWarning: "",
+          needsMoreResearch: false,
+        })),
+      };
+    }
+    if (kind === "story-script") {
+      const lines = [
+        { text: `What do we actually know about ${topic}?`, kind: "hook", statement: "non-factual", evidenceRefs: [] as string[] },
+        ...evidence.slice(0, 8).map((e, i) => ({
+          text: e.claim.endsWith(".") ? e.claim : `${e.claim}.`,
+          kind: (i === evidence.length - 1 ? "reveal" : "narration") as string,
+          statement: "fact" as string,
+          evidenceRefs: [e.ref],
+          sceneIndex: i,
+        })),
+        { text: "That is what the verified sources establish — no more, no less.", kind: "takeaway", statement: "non-factual", evidenceRefs: [] as string[] },
+      ];
+      const words = lines.reduce((n, l) => n + l.text.split(/\s+/).length, 0);
+      return {
+        title: `${topic}: what the evidence shows`,
+        lines,
+        estimatedWords: words,
+        estimatedSeconds: Math.max(10, Math.round(words / 2)),
+      };
+    }
+    // story-critique
+    const scriptLines = Array.isArray((ctx.script as any)?.lines) ? ((ctx.script as any).lines as { text: string }[]) : [];
+    const findings: unknown[] = [];
+    scriptLines.forEach((line, index) => {
+      if (/\band then\b/i.test(line.text)) {
+        findings.push({
+          category: "and-then-beat",
+          offendingLine: line.text,
+          lineIndex: index,
+          problem: '"and then" piles detail without tension (storytelling skill: the Dance).',
+          suggestedRevision: line.text.replace(/\band then\b/i, "but"),
+        });
+      }
+    });
+    if (Boolean(settings) && scriptLines.length > 0 && !/\?|but /i.test(scriptLines[0]!.text)) {
+      findings.push({
+        category: "weak-hook",
+        offendingLine: scriptLines[0]!.text,
+        lineIndex: 0,
+        problem: "Opening line does not pose a question or tension (mock heuristic).",
+        suggestedRevision: "",
+      });
+    }
+    return {
+      findings,
+      overallAssessment:
+        findings.length === 0
+          ? "Mechanical checks found no structural flags. Mock mode cannot judge narrative craft — connect a real provider for a substantive critique."
+          : `Mechanical checks flagged ${findings.length} line(s). Mock mode cannot judge narrative craft beyond these patterns.`,
     };
   }
 

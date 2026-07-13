@@ -89,6 +89,7 @@ model Project {
   learningPlans LearningPlan[]
   newsEvents    NewsEvent[]
   exports       Export[]
+  stories       Story[]
 
   @@index([ownerId, updatedAt])
 }
@@ -706,4 +707,82 @@ model ProviderConnectionStatus {
   detail       String?
   capabilities Json?
   lastCheckedAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Storytelling (video/script workflow on top of verified research)
+// ---------------------------------------------------------------------------
+
+model Story {
+  id                String   @id
+  projectId         String
+  title             String
+  mode              String   @default("auto")
+  resolvedMode      String?
+  framework         String?
+  frameworkReason   String?
+  platform          String   @default("youtube-long")
+  targetDurationSec Int      @default(480)
+  settingsJson      Json?
+  status            String   @default("draft") // draft | in-progress | needs-review | validated
+  providerUsed      String?
+  skillId           String?
+  skillHash         String?
+  packageVersion    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions    StoryVersion[]
+  invocations StoryInvocation[]
+  lockedFacts StoryLockedFact[]
+
+  @@index([projectId, updatedAt])
+}
+
+model StoryVersion {
+  id          String   @id
+  storyId     String
+  kind        String // blueprint | outline | hooks | scenes | script | critique | validation
+  version     Int      @default(1)
+  contentJson Json
+  createdAt   DateTime @default(now())
+
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, kind, version])
+  @@index([storyId, kind, version])
+}
+
+model StoryInvocation {
+  id             String   @id
+  storyId        String
+  stage          String
+  providerId     String
+  skillId        String?
+  skillHash      String?
+  method         String // embedded-skill-instructions | fallback-instructions | mock
+  status         String // success | failed
+  error          String?
+  retries        Int      @default(0)
+  durationMs     Int      @default(0)
+  packageVersion String?
+  createdAt      DateTime @default(now())
+
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([storyId, createdAt])
+}
+
+model StoryLockedFact {
+  id          String   @id
+  storyId     String
+  evidenceRef String
+  evidenceId  String?
+  text        String
+  createdAt   DateTime @default(now())
+
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, evidenceRef])
 }

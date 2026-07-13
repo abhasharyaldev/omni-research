@@ -99,6 +99,9 @@ importers:
       '@omni/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@omni/story-engine':
+        specifier: workspace:*
+        version: link:../../packages/story-engine
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
@@ -397,6 +400,37 @@ importers:
 
   packages/shared:
     dependencies:
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.0)
+
+  packages/story-engine:
+    dependencies:
+      '@omni/ai-providers':
+        specifier: workspace:*
+        version: link:../ai-providers
+      '@omni/database':
+        specifier: workspace:*
+        version: link:../database
+      '@omni/research-engine':
+        specifier: workspace:*
+        version: link:../research-engine
+      '@omni/security':
+        specifier: workspace:*
+        version: link:../security
+      '@omni/shared':
+        specifier: workspace:*
+        version: link:../shared
       zod:
         specifier: ^3.24.0
         version: 3.25.76

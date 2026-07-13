@@ -23,7 +23,7 @@
     "dev:worker": "pnpm --filter @omni/worker dev",
     "dev:web": "pnpm --filter @omni/web dev",
     "start": "pnpm --parallel --filter @omni/api --filter @omni/worker --filter @omni/web start",
-    "test": "pnpm -r --no-bail test",
+    "test": "pnpm -r --workspace-concurrency=1 --no-bail test",
     "test:e2e": "pnpm --filter @omni/web test:e2e",
     "test:provider:codex": "tsx scripts/provider-smoke.ts codex-cli",
     "test:provider:claude": "tsx scripts/provider-smoke.ts claude-code",

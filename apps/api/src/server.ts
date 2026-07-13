@@ -16,6 +16,7 @@ import { registerProviderRoutes } from "./routes/providers.js";
 import { registerLearningRoutes } from "./routes/learning.js";
 import { registerMiscRoutes } from "./routes/misc.js";
 import { registerSearchRoutes } from "./routes/search.js";
+import { registerStoryRoutes } from "./routes/stories.js";
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -90,6 +91,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerLearningRoutes(app);
   await registerMiscRoutes(app);
   await registerSearchRoutes(app);
+  await registerStoryRoutes(app);
 
   return app;
 }

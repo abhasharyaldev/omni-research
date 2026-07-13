@@ -66,6 +66,7 @@ export default function ProjectPage() {
         <span className="badge badge-accent">{project.mode}</span>
         <div className="ml-auto flex gap-2">
           <Link href={`/projects/${id}/sources`} className="btn">Source library ({project._count.sources})</Link>
+          <Link href={`/projects/${id}/story`} className="btn">Story studio</Link>
           {project.reports?.length > 0 && <Link href={`/projects/${id}/report`} className="btn">Report</Link>}
           <button
             className="btn btn-danger"
