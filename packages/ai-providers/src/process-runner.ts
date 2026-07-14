@@ -1,9 +1,33 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildFilteredEnv, redactSecrets } from "@omni/security";
 import { newId } from "@omni/shared";
+
+/**
+ * Resolve a bare CLI name (e.g. "claude") to a concrete file on Windows by
+ * scanning PATH with PATHEXT. Returns the input unchanged when it already has
+ * a directory/extension, off Windows, or when nothing is found. This lets an
+ * adapter configure `claude`/`codex`/`gemini` by name while the runner still
+ * finds the real `.cmd`/`.exe`.
+ */
+function resolveWindowsExecutable(executable: string): string {
+  if (process.platform !== "win32") return executable;
+  if (executable.includes("/") || executable.includes("\\") || path.extname(executable)) return executable;
+  const exts = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((e) => e.trim()).filter(Boolean);
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = path.join(dir, executable + ext);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return executable;
+}
+
+const WINDOWS_SHIM = /\.(cmd|bat)$/i;
 
 /**
  * Safe execution of local AI CLIs.
@@ -137,9 +161,25 @@ export class ProcessRunner {
         overrides: { ...request.envOverrides, TMPDIR: workspace, TMP: workspace, TEMP: workspace },
       });
 
-      const child = spawn(request.executable, request.args, {
+      // Resolve bare names to a concrete file, then handle Windows batch
+      // shims (npm `.cmd`/`.bat`): they cannot be spawned with shell:false, so
+      // route through cmd.exe using the BASENAME + the shim's own directory as
+      // cwd — no backslash-containing token reaches cmd's parser (which mangles
+      // them). Args stay a fixed template + stdin (no shell-injection surface),
+      // env is still filtered, and TMP still points at the isolated workspace.
+      const resolvedExe = resolveWindowsExecutable(request.executable);
+      let spawnExe = resolvedExe;
+      let spawnArgs = request.args;
+      let spawnCwd = workspace;
+      if (process.platform === "win32" && WINDOWS_SHIM.test(resolvedExe)) {
+        spawnExe = process.env.ComSpec || "C:\\Windows\\System32\\cmd.exe";
+        spawnCwd = path.dirname(resolvedExe);
+        spawnArgs = ["/d", "/s", "/c", path.basename(resolvedExe), ...request.args];
+      }
+
+      const child = spawn(spawnExe, spawnArgs, {
         shell: false,
-        cwd: workspace,
+        cwd: spawnCwd,
         env,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32",
