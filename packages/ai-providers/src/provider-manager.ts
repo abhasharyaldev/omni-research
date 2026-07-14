@@ -1,6 +1,7 @@
 import type { ProviderId, ProviderStatusCode } from "@omni/shared";
 import { MockProvider } from "./adapters/mock-provider.js";
 import { OllamaProvider } from "./adapters/ollama-provider.js";
+import { OpenAiCompatProvider } from "./adapters/openai-compat-provider.js";
 import { ClaudeCodeProvider } from "./adapters/claude-code-provider.js";
 import { CodexCliProvider } from "./adapters/codex-cli-provider.js";
 import { GeminiCliProvider } from "./adapters/gemini-cli-provider.js";
@@ -16,6 +17,7 @@ export class ProviderManager {
       new ClaudeCodeProvider(),
       new GeminiCliProvider(),
       new OllamaProvider(),
+      new OpenAiCompatProvider(),
       new MockProvider(),
     ]) {
       this.providers.set(provider.id, provider);

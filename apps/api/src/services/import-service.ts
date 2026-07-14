@@ -152,11 +152,28 @@ export async function createImportJob(args: {
   return { jobId: job.id, preview };
 }
 
-export async function confirmImportJob(jobId: string): Promise<{ imported: number; skipped: number; failed: number }> {
+export class ImportAlreadyClaimedError extends Error {
+  constructor(public readonly status: string) {
+    super(`Import job is already ${status}`);
+    this.name = "ImportAlreadyClaimedError";
+  }
+}
+
+export async function confirmImportJob(jobId: string): Promise<{ imported: number; skipped: number; failed: number; idempotent?: boolean }> {
   const prisma = getPrisma();
+  // ATOMIC CLAIM: exactly one request can move preview-ready -> importing.
+  const claimed = await prisma.importJob.updateMany({
+    where: { id: jobId, status: "preview-ready" },
+    data: { status: "importing" },
+  });
+  if (claimed.count === 0) {
+    const current = await prisma.importJob.findUniqueOrThrow({ where: { id: jobId } });
+    // Idempotent retry: a finished job returns its persisted summary.
+    const summary = (current.optionsJson as { summary?: { imported: number; skipped: number; failed: number } } | null)?.summary;
+    if (current.status.startsWith("completed") && summary) return { ...summary, idempotent: true };
+    throw new ImportAlreadyClaimedError(current.status);
+  }
   const job = await prisma.importJob.findUniqueOrThrow({ where: { id: jobId } });
-  if (job.status !== "preview-ready") throw new Error(`Job is ${job.status}; only preview-ready jobs can be confirmed`);
-  await prisma.importJob.update({ where: { id: jobId }, data: { status: "importing" } });
 
   const content = ((job.optionsJson as { content?: string } | null)?.content ?? "") as string;
   const kind = job.kind as ImportKind;
@@ -230,12 +247,12 @@ export async function confirmImportJob(jobId: string): Promise<{ imported: numbe
         await addItem(0, "skipped-duplicate", title, `identical content already exists as source ${duplicate.id}`, duplicate.id);
         counts.skipped++;
       } else {
-        const safeContent =
-          kind === "csv" || kind === "tsv"
-            ? parseDelimited(content, kind === "csv" ? "," : "\t")
-                .map((row) => row.map((cell) => escapeSpreadsheetCell(cell)).join(kind === "csv" ? ", " : "\t"))
-                .join("\n")
-            : content;
+        // EXACT PRESERVATION: the stored snapshot is the original content,
+        // byte-for-byte, matching the recorded checksum. Formula escaping
+        // happens only at dangerous OUTPUT boundaries (CSV export,
+        // spreadsheet copy) — never in persistence, so evidence verification
+        // and re-export always reference the true source.
+        const safeContent = content;
         const source = await prisma.source.create({
           data: {
             id: newId("src"),
@@ -273,7 +290,9 @@ export async function confirmImportJob(jobId: string): Promise<{ imported: numbe
     }
 
     const status = counts.failed > 0 || counts.skipped > 0 ? "completed-with-warnings" : "completed";
-    await prisma.importJob.update({ where: { id: jobId }, data: { status } });
+    // Persist the final summary (and drop the raw payload) so idempotent
+    // retries return the same result without re-importing.
+    await prisma.importJob.update({ where: { id: jobId }, data: { status, optionsJson: { summary: counts } } });
     await recordTimelineEvent(prisma, {
       projectId: job.projectId,
       type: "import-completed",

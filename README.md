@@ -36,6 +36,23 @@ all on your machine, **without any paid API keys**.
   pay-as-you-go billing.
 - **Real progress only**: the live run view streams actual persisted pipeline state over SSE.
 
+## Account-free local mode (default)
+
+`OMNI_DEPLOYMENT_MODE=local` (the default) opens straight into the workspace: no sign-up, no
+sign-in, one stable local identity created automatically (existing data is preserved — if a user
+already exists, that user becomes the local identity). The API refuses to bind anywhere but
+loopback in this mode. Set `OMNI_DEPLOYMENT_MODE=hosted` to restore full session authentication
+for any shared or non-local deployment.
+
+## Provider-neutral AI
+
+OmniResearch is not tied to any single AI vendor. Adapters: Claude Code, Codex CLI, Gemini CLI,
+Ollama, any **OpenAI-compatible server** (LM Studio, llama.cpp server, vLLM — set
+`OPENAI_COMPAT_BASE_URL` + `OPENAI_COMPAT_MODEL`), and the offline mock. Each adapter declares its
+capabilities (text, structured output, image input, translation suitability, local vs. remote);
+tasks are gated on declared capabilities and never silently switch providers or send data to a
+remote endpoint without explicit opt-in.
+
 ## Requirements
 
 - Node.js ≥ 20, [pnpm](https://pnpm.io) ≥ 9, Git
@@ -193,8 +210,8 @@ docs/           architecture, security, crawling policy, provider setup, deploym
 
 See the full list in [docs/architecture.md#known-limitations](docs/architecture.md#known-limitations).
 Highlights: keyless discovery is scoped to configured sources (by design); the mock provider
-assembles findings rather than truly synthesizing; Playwright rendering is an optional install;
-DOCX/direct-PDF export are provided via HTML/Markdown (print to PDF).
+assembles findings rather than truly synthesizing; Playwright rendering is an optional install.
+DOCX and PDF exports are genuine files (docx/pdfkit) — see docs/workspace.md.
 
 ## License
 

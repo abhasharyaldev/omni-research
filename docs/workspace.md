@@ -53,3 +53,14 @@ only. The export layer is modular (`packages/research-engine/src/binary-exporter
   "extension"`); no unauthenticated local endpoint will be exposed.
 - **Evidence graph, dataset/paper mode, school-mode expansion, story-studio variants** — data
   already supports them (relationships persisted); UI work pending.
+
+## Video integration (planned — Phase 3, not yet built)
+The video engine will integrate [bradautomates/claude-video](https://github.com/bradautomates/claude-video)
+(MIT) as an optional, versioned, provider-neutral extraction stage (yt-dlp + ffmpeg + captions +
+frames), audited and **pinned**; inspected upstream commit: `83da59fa78c3eee9e20f515fe75c438bb5166efd`.
+Despite the upstream name, extraction artifacts (transcript segments, frames, metadata) will be
+analyzable by ANY configured provider whose adapter declares the needed capabilities
+(`imageInput` for frames; text for transcripts) — Claude is never required. Multilingual
+translation (including the unofficial, interactive Google Translate Web flow), local Whisper
+transcription, portable bundles, the evidence graph, dataset/paper/school modes, and the browser
+extension remain planned; none are presented as complete.

@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { loginSchema, newId, registerSchema } from "@omni/shared";
 import { getPrisma } from "@omni/database";
 import { ApiHttpError, audit } from "./util.js";
+import { deploymentMode } from "./local-identity.js";
 
 export const SESSION_COOKIE = "omni_session";
 const SESSION_TTL_MS = 14 * 86_400_000;
@@ -70,6 +71,9 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const prisma = getPrisma();
 
   app.post("/api/auth/register", { config: { rateLimit: { max: 10, timeWindow: "10 minutes" } } }, async (request, reply) => {
+    if (deploymentMode() === "local") {
+      throw new ApiHttpError(409, "local-mode", "This install runs in account-free local mode; accounts are managed automatically.");
+    }
     const input = registerSchema.parse(request.body);
     const existing = await prisma.user.findUnique({ where: { email: input.email } });
     if (existing) throw new ApiHttpError(409, "email-taken", "An account with this email already exists");
@@ -98,6 +102,9 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/auth/login", { config: { rateLimit: { max: 15, timeWindow: "10 minutes" } } }, async (request, reply) => {
+    if (deploymentMode() === "local") {
+      throw new ApiHttpError(409, "local-mode", "This install runs in account-free local mode; no sign-in is needed.");
+    }
     const input = loginSchema.parse(request.body);
     const user = await prisma.user.findUnique({ where: { email: input.email } });
     // Constant-shape comparison to avoid user-enumeration timing differences.
@@ -130,7 +137,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/auth/me", async (request) => {
-    return { user: request.user ?? null };
+    return { user: request.user ?? null, mode: deploymentMode() };
   });
 
   app.delete("/api/auth/account", async (request, reply) => {

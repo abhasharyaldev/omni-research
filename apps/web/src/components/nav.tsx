@@ -50,10 +50,11 @@ export function Nav() {
 
   const { data } = useQuery({
     queryKey: ["me"],
-    queryFn: () => apiGet<{ user: { displayName: string } | null }>("/api/auth/me"),
+    queryFn: () => apiGet<{ user: { displayName: string } | null; mode?: string }>("/api/auth/me"),
     retry: false,
   });
   const user = data?.user;
+  const localMode = data?.mode === "local";
 
   const cycleTheme = () => {
     const next = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length]!;
@@ -86,16 +87,20 @@ export function Nav() {
           {user ? (
             <>
               <span className="text-sm" style={{ color: "var(--muted)" }}>{user.displayName}</span>
-              <button
-                className="btn"
-                onClick={async () => {
-                  await apiPost("/api/auth/logout");
-                  await queryClient.invalidateQueries();
-                  router.push("/");
-                }}
-              >
-                Sign out
-              </button>
+              {localMode ? (
+                <span className="badge" title="Account-free local mode: everything stays on this machine">local</span>
+              ) : (
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    await apiPost("/api/auth/logout");
+                    await queryClient.invalidateQueries();
+                    router.push("/");
+                  }}
+                >
+                  Sign out
+                </button>
+              )}
             </>
           ) : (
             <>

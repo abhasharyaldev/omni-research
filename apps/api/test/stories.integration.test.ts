@@ -26,6 +26,7 @@ function sessionCookie(response: { headers: Record<string, unknown> }): string {
 }
 
 beforeAll(async () => {
+  process.env.OMNI_DEPLOYMENT_MODE = "hosted"; // these suites exercise hosted auth semantics
   process.env.AI_PROVIDER = "mock";
   db = await bootstrapDatabase({ migrate: true });
   app = await buildServer();

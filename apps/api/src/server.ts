@@ -7,6 +7,7 @@ import { ZodError } from "zod";
 import { newId } from "@omni/shared";
 import { redactSecrets } from "@omni/security";
 import { loadUser, registerAuthRoutes, requireCsrfHeader } from "./auth.js";
+import { deploymentMode, getLocalUser } from "./local-identity.js";
 import { ApiHttpError } from "./util.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerRunRoutes } from "./routes/runs.js";
@@ -48,6 +49,12 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   app.addHook("preHandler", async (request) => {
     request.user = await loadUser(request);
+    // Account-free local mode: resolve the singleton local identity
+    // server-side. CSRF/origin checks still apply; hosted mode never
+    // inherits this fallback.
+    if (!request.user && deploymentMode() === "local") {
+      request.user = await getLocalUser();
+    }
     if (request.url.startsWith("/api/")) requireCsrfHeader(request);
   });
 

@@ -5,7 +5,7 @@ import { newId } from "@omni/shared";
 import { MAX_IMPORT_BYTES } from "@omni/security";
 import { requireUser } from "../auth.js";
 import { ApiHttpError, audit, requireProject } from "../util.js";
-import { IMPORT_KINDS, confirmImportJob, createImportJob, type ImportKind } from "../services/import-service.js";
+import { IMPORT_KINDS, ImportAlreadyClaimedError, confirmImportJob, createImportJob, type ImportKind } from "../services/import-service.js";
 
 const noteWriteSchema = z.object({
   title: z.string().trim().max(300).optional(),
@@ -255,6 +255,9 @@ export async function registerWorkspaceRoutes(app: FastifyInstance): Promise<voi
       await audit(user.id, "import.confirm", "import", id, request, counts);
       return { counts };
     } catch (err) {
+      if (err instanceof ImportAlreadyClaimedError) {
+        throw new ApiHttpError(409, "import-already-claimed", err.message);
+      }
       throw new ApiHttpError(400, "import-failed", (err as Error).message);
     }
   });
@@ -264,8 +267,11 @@ export async function registerWorkspaceRoutes(app: FastifyInstance): Promise<voi
     const { id } = request.params as { id: string };
     const job = await prisma.importJob.findUnique({ where: { id }, include: { project: true } });
     if (!job || job.project.ownerId !== user.id) throw new ApiHttpError(404, "not-found", "Import job not found");
-    if (job.status !== "preview-ready") throw new ApiHttpError(409, "not-cancellable", `Job is ${job.status}`);
-    await prisma.importJob.update({ where: { id }, data: { status: "cancelled", optionsJson: {} } });
+    const cancelled = await prisma.importJob.updateMany({
+      where: { id, status: "preview-ready" },
+      data: { status: "cancelled", optionsJson: {} },
+    });
+    if (cancelled.count === 0) throw new ApiHttpError(409, "not-cancellable", `Job is ${job.status}`);
     return { ok: true };
   });
 }

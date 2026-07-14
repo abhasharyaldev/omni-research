@@ -20,8 +20,35 @@ export type ProviderCapabilities = {
   structuredOutput: "native" | "prompted" | "none";
   streaming: boolean;
   localOnly: boolean;
+  /** True only when the adapter can accept image/frame input. Absent = false. */
+  imageInput?: boolean;
+  /** True when the adapter is suitable for translation tasks. Absent = unknown. */
+  translation?: boolean;
+  /** Bounded input size the adapter enforces. Absent = adapter-managed. */
+  maxInputChars?: number;
   notes: string[];
 };
+
+export type ProviderCapabilityNeed = "textGeneration" | "structuredOutput" | "imageInput" | "translation";
+
+/**
+ * Capability gate used BEFORE dispatching a task. Missing/undefined
+ * capabilities are treated as absent — a provider is never assumed capable.
+ * Returns null when satisfied, otherwise a user-facing reason (so callers can
+ * offer another provider or a degraded mode instead of silently switching).
+ */
+export function missingCapability(caps: ProviderCapabilities, need: ProviderCapabilityNeed): string | null {
+  switch (need) {
+    case "textGeneration":
+      return caps.textGeneration ? null : "This provider cannot generate text.";
+    case "structuredOutput":
+      return caps.structuredOutput === "none" ? "This provider cannot produce structured JSON output." : null;
+    case "imageInput":
+      return caps.imageInput === true ? null : "This provider/model does not accept image input (text-only). Use transcript-only mode or pick a multimodal provider.";
+    case "translation":
+      return caps.translation === false ? "This provider is not suitable for translation tasks." : null;
+  }
+}
 
 /**
  * Task kinds let the deterministic mock provider produce useful outputs from

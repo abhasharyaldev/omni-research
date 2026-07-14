@@ -3,11 +3,18 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Suspense, useState } from "react";
+import { useEffect, Suspense, useState  } from "react";
 import { apiPost, ApiError } from "@/lib/api";
 
 function RegisterForm() {
   const router = useRouter();
+  // local-mode-redirect: account-free installs go straight to the workspace.
+  useEffect(() => {
+    void fetch("/api/auth/me", { credentials: "same-origin" })
+      .then((r) => r.json())
+      .then((d) => { if (d?.mode === "local") router.replace("/dashboard"); })
+      .catch(() => undefined);
+  }, [router]);
   const search = useSearchParams();
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState("");

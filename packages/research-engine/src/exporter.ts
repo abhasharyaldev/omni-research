@@ -11,7 +11,10 @@ export type ExportFormat =
   | "bibliography";
 
 function csvEscape(value: unknown): string {
-  const s = String(value ?? "");
+  // Neutralize spreadsheet formula triggers at the OUTPUT boundary only —
+  // stored source content is preserved exactly (docs/workspace.md).
+  let s = String(value ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

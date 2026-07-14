@@ -185,13 +185,14 @@ export type UntrustedSourceExcerpt = {
   instructionPolicy: "data-only";
 };
 
-export type ProviderId = "codex-cli" | "claude-code" | "gemini-cli" | "ollama" | "mock";
+export type ProviderId = "codex-cli" | "claude-code" | "gemini-cli" | "ollama" | "openai-compatible" | "mock";
 
 export const PROVIDER_IDS: ProviderId[] = [
   "codex-cli",
   "claude-code",
   "gemini-cli",
   "ollama",
+  "openai-compatible",
   "mock",
 ];
 
