@@ -70,6 +70,7 @@ export default function ProjectPage() {
           <Link href={`/projects/${id}/notebook`} className="btn">Notebook</Link>
           <Link href={`/projects/${id}/import`} className="btn">Import</Link>
           <Link href={`/projects/${id}/timeline`} className="btn">Timeline</Link>
+          <Link href={`/projects/${id}/videos`} className="btn">Videos</Link>
           <button
             className="btn"
             title="Download a portable .omni.json bundle of this project"

@@ -96,6 +96,7 @@ model Project {
   stories       Story[]
   timelineEvents TimelineEvent[]
   importJobs     ImportJob[]
+  videoAssets    VideoAsset[]
 
   @@index([ownerId, updatedAt])
 }
@@ -867,4 +868,53 @@ model ImportItem {
   job ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId, index])
+}
+
+// ---------------------------------------------------------------------------
+// Video engine: neutral extraction artifacts (provider-agnostic)
+// ---------------------------------------------------------------------------
+
+model VideoAsset {
+  id            String   @id
+  projectId     String
+  sourceId      String? // linked library Source when analyzed as evidence
+  sourceKind    String // url | local | subtitle-import
+  sourceRef     String // URL, sanitized local name, or import job id (never a disk path)
+  title         String?
+  durationSec   Float?
+  captionSource String   @default("unknown") // manual | auto | whisper | subtitle-import | frames-only | unknown
+  language      String?
+  detailMode    String   @default("transcript") // transcript | efficient | balanced | token-burner
+  frameCount    Int      @default(0)
+  status        String   @default("pending") // pending | extracting | ready | failed
+  error         String?
+  engineName    String   @default("claude-video/watch")
+  engineVersion String?
+  enginePin     String? // pinned upstream commit for provenance
+  dataLeftDevice Boolean @default(false)
+  warnings      Json     @default("[]")
+  checksum      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project  Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  segments TranscriptSegment[]
+
+  @@index([projectId, createdAt])
+}
+
+model TranscriptSegment {
+  id           String @id
+  videoAssetId String
+  index        Int
+  startMs      Int
+  endMs        Int
+  speaker      String?
+  text         String
+  checksum     String?
+
+  video VideoAsset @relation(fields: [videoAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([videoAssetId, index])
+  @@index([videoAssetId, index])
 }

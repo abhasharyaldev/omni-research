@@ -102,6 +102,9 @@ importers:
       '@omni/story-engine':
         specifier: workspace:*
         version: link:../../packages/story-engine
+      '@omni/video-engine':
+        specifier: workspace:*
+        version: link:../../packages/video-engine
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
@@ -446,6 +449,25 @@ importers:
       zod:
         specifier: ^3.24.0
         version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.0)
+
+  packages/video-engine:
+    dependencies:
+      '@omni/security':
+        specifier: workspace:*
+        version: link:../security
+      '@omni/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@types/node':
         specifier: ^22.13.0
