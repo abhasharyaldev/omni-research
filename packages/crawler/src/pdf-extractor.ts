@@ -99,3 +99,53 @@ function pdfDate(value: string): Date | undefined {
   );
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
+
+/** Parse PDF BYTES (universal import path — no network). Verifies the %PDF
+ * signature, extracts page-level text, detects encrypted and image-only
+ * documents, and reports honest extraction warnings. */
+export async function extractPdfFromBytes(bytes: Buffer): Promise<{
+  pageTexts: string[];
+  title?: string;
+  author?: string;
+  publishedAt?: Date;
+  encrypted: boolean;
+  imageOnly: boolean;
+  warnings: string[];
+}> {
+  if (!bytes.subarray(0, 5).toString("latin1").startsWith("%PDF-")) {
+    throw new Error("Not a PDF: missing %PDF signature (extensions and MIME types are not trusted)");
+  }
+  const warnings: string[] = [];
+  let pdf;
+  try {
+    pdf = await getDocumentProxy(new Uint8Array(bytes));
+  } catch (err) {
+    const message = (err as Error).message ?? "";
+    if (/password|encrypt/i.test(message)) {
+      return { pageTexts: [], encrypted: true, imageOnly: false, warnings: ["PDF is encrypted; text cannot be extracted without the password"] };
+    }
+    throw new Error(`PDF parser failed: ${message.slice(0, 200)}`);
+  }
+  const { text: raw } = await extractText(pdf, { mergePages: false });
+  const pageTexts = (Array.isArray(raw) ? raw : [String(raw)]).map((t) =>
+    t.replace(/\s+\n/g, "\n").replace(/[ \t]+/g, " ").trim()
+  );
+  let title: string | undefined;
+  let author: string | undefined;
+  let publishedAt: Date | undefined;
+  try {
+    const meta = await (pdf as any).getMetadata();
+    const info = (meta?.info ?? {}) as Record<string, unknown>;
+    title = typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : undefined;
+    author = typeof info.Author === "string" && info.Author.trim() ? info.Author.trim() : undefined;
+    publishedAt = typeof info.CreationDate === "string" ? pdfDate(info.CreationDate) : undefined;
+  } catch {
+    warnings.push("PDF metadata could not be read");
+  }
+  const totalChars = pageTexts.join("").length;
+  const imageOnly = totalChars < 40 * Math.max(1, pageTexts.length);
+  if (imageOnly) warnings.push("Little or no extractable text — this may be a scanned/image-only PDF; OCR is not performed (and is never claimed)");
+  const emptyPages = pageTexts.filter((t) => t.length === 0).length;
+  if (!imageOnly && emptyPages > 0) warnings.push(`${emptyPages} page(s) contained no extractable text`);
+  return { pageTexts, title, author, publishedAt, encrypted: false, imageOnly, warnings };
+}

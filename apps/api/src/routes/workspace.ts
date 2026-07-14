@@ -6,6 +6,7 @@ import { MAX_IMPORT_BYTES } from "@omni/security";
 import { requireUser } from "../auth.js";
 import { ApiHttpError, audit, requireProject } from "../util.js";
 import { IMPORT_KINDS, ImportAlreadyClaimedError, confirmImportJob, createImportJob, type ImportKind } from "../services/import-service.js";
+import { buildBundle } from "../services/bundle-service.js";
 
 const noteWriteSchema = z.object({
   title: z.string().trim().max(300).optional(),
@@ -203,16 +204,21 @@ export async function registerWorkspaceRoutes(app: FastifyInstance): Promise<voi
     await requireProject(id, user.id);
     const body = z
       .object({
-        content: z.string().min(1).max(MAX_IMPORT_BYTES),
+        // Text payloads (pasted text, URL lists, CSV, subtitles, bibtex, bundle).
+        content: z.string().max(MAX_IMPORT_BYTES).optional(),
+        // Binary payloads (PDF): base64, capped ~20 MB encoded.
+        contentBase64: z.string().max(28_000_000).optional(),
         kind: z.enum(IMPORT_KINDS as unknown as [string, ...string[]]).optional(),
         filename: z.string().max(300).optional(),
       })
+      .refine((b) => b.content || b.contentBase64, { message: "content or contentBase64 is required" })
       .parse(request.body ?? {});
     try {
       const result = await createImportJob({
         projectId: id,
         userId: user.id,
-        content: body.content,
+        content: body.content ?? "",
+        contentBase64: body.contentBase64,
         kind: body.kind as ImportKind | undefined,
         filename: body.filename,
       });
@@ -273,5 +279,25 @@ export async function registerWorkspaceRoutes(app: FastifyInstance): Promise<voi
     });
     if (cancelled.count === 0) throw new ApiHttpError(409, "not-cancellable", `Job is ${job.status}`);
     return { ok: true };
+  });
+
+  // ---- Portable bundle export -------------------------------------------------
+
+  app.post("/api/projects/:id/bundle", async (request, reply) => {
+    const user = requireUser(request);
+    const { id } = request.params as { id: string };
+    await requireProject(id, user.id);
+    const body = z.object({ includeSnapshots: z.boolean().default(false) }).parse(request.body ?? {});
+    const bundle = await buildBundle(id, { includeSnapshots: body.includeSnapshots });
+    await recordTimelineEvent(prisma, {
+      projectId: id,
+      type: "export-created",
+      summary: `Portable bundle exported (${body.includeSnapshots ? "with snapshots" : "metadata only"})`,
+      entityType: "import",
+    });
+    await audit(user.id, "bundle.export", "project", id, request, { includeSnapshots: body.includeSnapshots, ...bundle.counts });
+    reply.header("content-type", "application/json");
+    reply.header("content-disposition", `attachment; filename="${bundle.filename}"`);
+    return reply.send(bundle.json);
   });
 }

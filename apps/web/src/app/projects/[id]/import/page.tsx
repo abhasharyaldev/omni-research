@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 
-const KINDS = ["auto-detect", "pasted-text", "url-list", "markdown", "plain-text", "csv", "tsv"] as const;
+const KINDS = ["auto-detect", "pasted-text", "url-list", "markdown", "plain-text", "csv", "tsv", "pdf", "docx", "bibtex", "srt", "vtt", "rss", "atom", "sitemap", "omni-bundle"] as const;
 const MAX_BYTES = 5 * 1024 * 1024;
 
 /**
@@ -19,6 +19,7 @@ export default function ImportPage() {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<(typeof KINDS)[number]>("auto-detect");
   const [content, setContent] = useState("");
+  const [contentBase64, setContentBase64] = useState<string | undefined>();
   const [filename, setFilename] = useState<string | undefined>();
   const [preview, setPreview] = useState<{ jobId: string; preview: any; duplicateOfJobId?: string } | null>(null);
   const [result, setResult] = useState<any | null>(null);
@@ -31,18 +32,33 @@ export default function ImportPage() {
   });
 
   const readFile = (file: File) => {
-    if (file.size > MAX_BYTES) {
-      setError(`File exceeds the ${Math.round(MAX_BYTES / 1_048_576)} MB import limit`);
+    const isBinary = /\.(pdf|docx)$/i.test(file.name);
+    const limit = isBinary ? 20 * 1024 * 1024 : MAX_BYTES;
+    if (file.size > limit) {
+      setError(`File exceeds the ${Math.round(limit / 1_048_576)} MB import limit`);
       return;
     }
+    setError(null);
+    setContent("");
+    setContentBase64(undefined);
     const reader = new FileReader();
-    reader.onload = () => {
-      setContent(String(reader.result ?? ""));
-      setFilename(file.name);
-      setError(null);
-    };
-    reader.onerror = () => setError("Could not read the file");
-    reader.readAsText(file);
+    if (isBinary) {
+      // PDF/DOCX → base64 (signature-checked server-side; extensions untrusted).
+      reader.onload = () => {
+        const dataUrl = String(reader.result ?? "");
+        setContentBase64(dataUrl.slice(dataUrl.indexOf(",") + 1));
+        setFilename(file.name);
+      };
+      reader.onerror = () => setError("Could not read the file");
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = () => {
+        setContent(String(reader.result ?? ""));
+        setFilename(file.name);
+      };
+      reader.onerror = () => setError("Could not read the file");
+      reader.readAsText(file);
+    }
   };
 
   const buildPreview = async () => {
@@ -51,7 +67,7 @@ export default function ImportPage() {
     setResult(null);
     try {
       const response = await apiPost<{ jobId: string; preview: any; duplicateOfJobId?: string }>(`/api/projects/${id}/imports`, {
-        content,
+        ...(contentBase64 ? { contentBase64 } : { content }),
         filename,
         ...(kind !== "auto-detect" ? { kind } : {}),
       });
@@ -73,6 +89,7 @@ export default function ImportPage() {
       setResult({ counts, job: job.job });
       setPreview(null);
       setContent("");
+      setContentBase64(undefined);
       setFilename(undefined);
       await queryClient.invalidateQueries({ queryKey: ["imports", id] });
       await queryClient.invalidateQueries({ queryKey: ["sources", id] });
@@ -91,8 +108,9 @@ export default function ImportPage() {
       </div>
       <p className="mt-1 max-w-2xl text-sm" style={{ color: "var(--muted)" }}>
         Bring existing research in as sources with full provenance. Supported now: pasted text, URL lists,
-        Markdown, plain text, CSV/TSV. Everything is treated as untrusted — parsed, size-capped, and previewed
-        before anything is committed. PDF/DOCX/BibTeX import is planned (see docs/workspace.md).
+        Markdown, plain text, CSV/TSV, PDF, DOCX, BibTeX, SRT/WebVTT subtitles, RSS/Atom feeds, XML sitemaps,
+        and OmniResearch portable bundles (.omni.json). Everything is treated as untrusted — parsed,
+        size-capped, signature-checked, and previewed before anything is committed.
       </p>
 
       {!preview && !result && (
@@ -105,10 +123,10 @@ export default function ImportPage() {
               </select>
             </div>
             <div>
-              <label className="label">Or pick a file (.md .txt .csv .tsv)</label>
+              <label className="label">Or pick a file (.md .txt .csv .tsv .pdf .docx .bib .srt .vtt .json)</label>
               <input
                 type="file"
-                accept=".md,.markdown,.txt,.csv,.tsv"
+                accept=".md,.markdown,.txt,.csv,.tsv,.pdf,.docx,.bib,.bibtex,.srt,.vtt,.json"
                 className="text-sm"
                 aria-label="Import file"
                 onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0])}
@@ -125,7 +143,7 @@ export default function ImportPage() {
             onChange={(e) => setContent(e.target.value)}
           />
           {error && <p className="text-sm" style={{ color: "var(--bad)" }}>{error}</p>}
-          <button className="btn btn-primary" disabled={busy || !content.trim()} onClick={buildPreview}>
+          <button className="btn btn-primary" disabled={busy || (!content.trim() && !contentBase64)} onClick={buildPreview}>
             {busy ? "Parsing…" : "Parse & preview"}
           </button>
         </div>

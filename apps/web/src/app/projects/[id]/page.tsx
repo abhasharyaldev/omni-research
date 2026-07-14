@@ -70,6 +70,21 @@ export default function ProjectPage() {
           <Link href={`/projects/${id}/notebook`} className="btn">Notebook</Link>
           <Link href={`/projects/${id}/import`} className="btn">Import</Link>
           <Link href={`/projects/${id}/timeline`} className="btn">Timeline</Link>
+          <button
+            className="btn"
+            title="Download a portable .omni.json bundle of this project"
+            onClick={async () => {
+              const res = await fetch(`/api/projects/${id}/bundle`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-omni-csrf": "1" }, body: JSON.stringify({ includeSnapshots: true }) });
+              if (!res.ok) { alert("Bundle export failed"); return; }
+              const blob = await res.blob();
+              const dispo = res.headers.get("content-disposition") ?? "";
+              const name = dispo.match(/filename="([^"]+)"/)?.[1] ?? "project.omni.json";
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+            }}
+          >
+            Export bundle
+          </button>
           {project.reports?.length > 0 && <Link href={`/projects/${id}/report`} className="btn">Report</Link>}
           <button
             className="btn btn-danger"

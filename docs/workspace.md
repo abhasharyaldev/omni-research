@@ -51,6 +51,7 @@ only. The export layer is modular (`packages/research-engine/src/binary-exporter
 - **Browser extension** — server contract sketch: `POST /api/capture` (session-authenticated,
   same-origin policy, payload-capped, dedup by normalized URL, provenance `discoveredBy:
   "extension"`); no unauthenticated local endpoint will be exposed.
+- **RIS / CSL-JSON bibliography, .omni.zip archives, multi-file jobs, OCR** — same import service extension point (add a kind + parser); RIS/CSL are structurally similar to BibTeX.
 - **Evidence graph, dataset/paper mode, school-mode expansion, story-studio variants** — data
   already supports them (relationships persisted); UI work pending.
 
