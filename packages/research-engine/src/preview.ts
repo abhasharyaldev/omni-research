@@ -6,7 +6,7 @@ import {
   type RunPreview,
 } from "@omni/shared";
 import { validateUrlSyntax, type UrlPolicy } from "@omni/security";
-import { RobotsPolicy, domainOf, normalizeUrl, scoreCandidates } from "@omni/crawler";
+import { RobotsPolicy, domainOf, isVideoUrl, normalizeUrl, scoreCandidates } from "@omni/crawler";
 import type { PrismaClient } from "@omni/database";
 import type { ProviderManager } from "@omni/ai-providers";
 import { PLAN_SCHEMA_DESCRIPTION, planOutputSchema, type PlanOutput } from "./schemas.js";
@@ -30,7 +30,19 @@ export type PreviewOverrides = {
   crawlLimits?: Partial<CrawlLimits>;
   excludeDomains?: string[];
   extraUrls?: string[];
+  forceReplan?: boolean;
 };
+
+/**
+ * In-memory plan cache. Generating a plan is a single ~55s LLM call, and the
+ * preview dialog re-runs on every source tweak (add URL, exclude domain,
+ * rebuild). Until the user approves a run — after which the run's stored plan
+ * takes over — those repeat previews would each regenerate the plan. Caching
+ * it per project keeps re-previews instant. The key includes the plan's inputs
+ * (prompt, topics, mode, provider), so editing the project auto-invalidates it.
+ */
+const PLAN_CACHE_TTL_MS = 60 * 60 * 1000;
+const planCache = new Map<string, { key: string; plan: PlanOutput; expiresAt: number }>();
 
 /**
  * Build a research-run preview WITHOUT crawling any content pages: generate
@@ -46,9 +58,12 @@ export async function buildRunPreview(
 ): Promise<RunPreview> {
   const project = await prisma.project.findUniqueOrThrow({
     where: { id: projectId },
-    include: { topics: { orderBy: { order: "asc" } } },
+    include: {
+      owner: { select: { defaultProvider: true } },
+      topics: { orderBy: { order: "asc" } },
+    },
   });
-  const providerId = (project.provider ?? providers.defaultId()) as ProviderId;
+  const providerId = (project.provider ?? project.owner.defaultProvider ?? providers.defaultId()) as ProviderId;
   const provider = providers.get(providerId);
   const warnings: string[] = [];
 
@@ -75,8 +90,20 @@ export async function buildRunPreview(
   });
   let plan: PlanOutput;
   const parsed = latestRun?.planJson ? planOutputSchema.safeParse(latestRun.planJson) : null;
+  const cacheKey = JSON.stringify({
+    prompt: project.prompt,
+    topics: project.topics.map((t) => t.name),
+    mode: project.mode,
+    provider: providerId,
+  });
+  const cached = planCache.get(projectId);
+  const cacheHit =
+    !overrides.forceReplan && cached && cached.key === cacheKey && cached.expiresAt > Date.now();
   if (parsed?.success) {
+    // A saved run's plan always wins — it preserves any user edits.
     plan = parsed.data;
+  } else if (cacheHit) {
+    plan = cached.plan;
   } else {
     plan = await provider.generateStructured(
       {
@@ -93,6 +120,7 @@ export async function buildRunPreview(
       },
       planOutputSchema
     );
+    planCache.set(projectId, { key: cacheKey, plan, expiresAt: Date.now() + PLAN_CACHE_TTL_MS });
   }
 
   const startingUrls = [
@@ -132,17 +160,25 @@ export async function buildRunPreview(
     const domain = domainOf(normalized);
     const flags: string[] = [];
 
+    const video = isVideoUrl(normalized);
     const syntax = validateUrlSyntax(normalized, policy);
-    if (!syntax.ok) flags.push(`blocked-by-rules: ${syntax.reason}`);
+    if (video) {
+      // Transcribed during the run (captions), not HTML-crawled.
+      flags.push("video-transcript-source");
+    } else if (!syntax.ok) {
+      flags.push(`blocked-by-rules: ${syntax.reason}`);
+    }
     if ((seenNormalized.get(normalized) ?? 0) > 1) flags.push("possible-duplicate");
-    if (LOW_QUALITY_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) {
+    if (!video && LOW_QUALITY_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) {
       flags.push("user-generated-domain");
     }
-    if (/\/(opinion|editorial|op-ed|blog)s?\//i.test(normalized)) flags.push("opinion-section");
+    if (!video && /\/(opinion|editorial|op-ed|blog)s?\//i.test(normalized)) flags.push("opinion-section");
 
     // Robots pre-check for the strongest candidates only (bounded for speed).
-    let robotsVerdict: PreviewCandidate["robots"] = "unknown";
-    if (syntax.ok && index < ROBOTS_PRECHECK_LIMIT) {
+    // Video URLs are transcribed via yt-dlp captions, not HTML-crawled, so the
+    // HTML robots rules do not gate them.
+    let robotsVerdict: PreviewCandidate["robots"] = video ? "allowed" : "unknown";
+    if (!video && syntax.ok && index < ROBOTS_PRECHECK_LIMIT) {
       try {
         const check = await robots.check(normalized);
         robotsVerdict = check.allowed ? "allowed" : "disallowed";
@@ -163,8 +199,7 @@ export async function buildRunPreview(
       flags,
       score: Math.max(0, scored.length - index),
       included:
-        syntax.ok &&
-        robotsVerdict !== "disallowed" &&
+        (video || (syntax.ok && robotsVerdict !== "disallowed")) &&
         !flags.includes("possible-duplicate") &&
         candidates.filter((c) => c.included).length < maxSources,
     });

@@ -76,6 +76,7 @@ export type SkipReason =
   | "login-required"
   | "paywall-detected"
   | "unsupported-content-type"
+  | "no-transcript"
   | "unsafe-url"
   | "private-network"
   | "domain-blocked"

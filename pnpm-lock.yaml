@@ -250,6 +250,9 @@ importers:
       '@omni/shared':
         specifier: workspace:*
         version: link:../shared
+      '@omni/video-engine':
+        specifier: workspace:*
+        version: link:../video-engine
       cheerio:
         specifier: ^1.0.0
         version: 1.2.0

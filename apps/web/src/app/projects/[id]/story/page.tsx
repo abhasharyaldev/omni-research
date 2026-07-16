@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 
 const MODES = [
@@ -24,6 +24,22 @@ const LINE_BADGE: Record<string, string> = {
   unsupported: "badge-bad",
   "non-factual": "",
 };
+
+function reviewSuggestion(issue: any): string {
+  if (issue.code === "disputed-stated-as-fact") {
+    if (/black dahlia|press/i.test(issue.text ?? "")) {
+      return "Rewrite as: FBI material ties the Black Dahlia nickname to press accounts, but the exact origin should be treated carefully.";
+    }
+    if (/fbi vault|archival/i.test(issue.text ?? "")) {
+      return "Rewrite as: FBI Vault materials appear to include Black Dahlia-related records, but the FBI file is not a complete case record because LAPD had jurisdiction.";
+    }
+    return "Rewrite this as disputed or uncertain, not as a flat fact.";
+  }
+  if (issue.code === "missing-citation") return "Add a valid E-ref or remove the factual claim.";
+  if (issue.code === "unknown-evidence-ref") return "Replace the invented or invalid E-ref with one that exists in the research package.";
+  if (issue.code === "altered-number") return "Copy the number exactly from the cited evidence, or remove the number.";
+  return "Revise the line so it is directly supported by cited evidence, or remove it.";
+}
 
 export default function StoryStudioPage() {
   const { id } = useParams<{ id: string }>();
@@ -59,6 +75,20 @@ export default function StoryStudioPage() {
 
   const story = storyData?.story;
   const artifacts = story?.artifacts ?? {};
+  const pendingInvocation = story?.invocations?.find((invocation: any) => invocation.status === "pending");
+  const critiqueMissingDraft = /no draft script|draft script (?:was )?not provided|missing draft/i.test(artifacts.critique?.overallAssessment ?? "");
+  const effectiveCritique = critiqueMissingDraft && artifacts.validation
+    ? {
+        overallAssessment: `Generated from validation because the saved critique did not attach to the draft. ${artifacts.validation.summary}`,
+        findings: (artifacts.validation.issues ?? []).map((issue: any) => ({
+          category: issue.code,
+          offendingLine: issue.text,
+          lineIndex: issue.lineIndex,
+          problem: issue.detail,
+          suggestedRevision: reviewSuggestion(issue),
+        })),
+      }
+    : artifacts.critique;
   const pkg = pkgData?.package;
   const evidenceByRef: Record<string, any> = {};
   for (const e of pkg?.evidence ?? []) evidenceByRef[e.ref] = e;
@@ -68,6 +98,10 @@ export default function StoryStudioPage() {
     queryClient.invalidateQueries({ queryKey: ["story", activeStoryId] }),
     queryClient.invalidateQueries({ queryKey: ["stories", id] }),
   ]);
+
+  useEffect(() => {
+    if (storyData) setError(null);
+  }, [storyData]);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusyStage(label);
@@ -156,6 +190,11 @@ export default function StoryStudioPage() {
       </div>
 
       {error && <div className="panel mt-3 border p-3 text-sm" style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>{error}</div>}
+      {pendingInvocation && !busyStage && (
+        <div className="panel mt-3 border p-3 text-sm" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+          Generating {pendingInvocation.stage}. If this was interrupted, retry after the stale timeout and OmniResearch will mark the old attempt failed automatically.
+        </div>
+      )}
 
       {!story && (
         <div className="panel mt-4 space-y-4 p-5">
@@ -212,7 +251,7 @@ export default function StoryStudioPage() {
               <button
                 key={stage}
                 className={`btn ${!artifacts[stage] && (stage === "blueprint" || artifacts.blueprint) ? "btn-primary" : ""}`}
-                disabled={busyStage !== null}
+                disabled={busyStage !== null || Boolean(pendingInvocation)}
                 onClick={() => run(stage, () => apiPost(`/api/stories/${story.id}/generate/${stage}`))}
               >
                 {busyStage === stage ? `Generating ${stage}…` : `${artifacts[stage] ? "Regenerate" : "Generate"} ${stage}`}
@@ -220,7 +259,7 @@ export default function StoryStudioPage() {
             ))}
             <button
               className="btn btn-primary"
-              disabled={busyStage !== null || !artifacts.script}
+              disabled={busyStage !== null || Boolean(pendingInvocation) || !artifacts.script}
               onClick={() => run("validate", () => apiPost(`/api/stories/${story.id}/validate`))}
             >
               {busyStage === "validate" ? "Validating…" : "Validate script"}
@@ -318,13 +357,14 @@ export default function StoryStudioPage() {
             </div>
           )}
 
-          {artifacts.critique && (
+          {effectiveCritique && (
             <div className="panel mt-4 p-5 text-sm">
               <h2 className="font-bold">Critique <span className="badge ml-1">v{story.artifactVersions.critique}</span></h2>
-              <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{artifacts.critique.overallAssessment}</p>
-              {(artifacts.critique.findings ?? []).map((f: any, i: number) => (
+              <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{effectiveCritique.overallAssessment}</p>
+              {(effectiveCritique.findings ?? []).map((f: any, i: number) => (
                 <p key={i} className="mt-2 text-xs">
-                  <span className="badge badge-warn">{f.category}</span> {f.problem}
+                  <span className="badge badge-warn">{f.category}</span>{" "}
+                  {typeof f.lineIndex === "number" && <span className="badge">line {f.lineIndex}</span>} {f.problem}
                   {f.offendingLine && <em className="block" style={{ color: "var(--muted)" }}>“{f.offendingLine}”</em>}
                   {f.suggestedRevision && <span className="block">→ {f.suggestedRevision}</span>}
                 </p>
@@ -339,6 +379,17 @@ export default function StoryStudioPage() {
                 <span className={`badge ${artifacts.validation.verdict === "ready" ? "badge-good" : "badge-warn"}`}>{artifacts.validation.verdict}</span>
               </h2>
               <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{artifacts.validation.summary}</p>
+              {(artifacts.validation.issues ?? []).length > 0 && (
+                <div className="mt-3 border-t pt-2 text-xs" style={{ borderColor: "var(--line)" }}>
+                  <p className="font-semibold">Suggested fixes</p>
+                  {(artifacts.validation.issues ?? []).map((issue: any, i: number) => (
+                    <p key={`fix-${i}`} className="mt-2">
+                      <span className="badge">{typeof issue.lineIndex === "number" ? `line ${issue.lineIndex}` : "script"}</span>{" "}
+                      <span style={{ color: "var(--accent)" }}>{reviewSuggestion(issue)}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
               {(artifacts.validation.issues ?? []).map((issue: any, i: number) => (
                 <p key={i} className="mt-1 text-xs">
                   <span className={`badge ${issue.severity === "high" ? "badge-bad" : "badge-warn"}`}>{issue.code}</span>{" "}

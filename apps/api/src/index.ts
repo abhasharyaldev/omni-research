@@ -1,6 +1,9 @@
+import { loadRootEnv } from "@omni/shared/env";
 import { bootstrapDatabase, cleanupExpiredSessions, getPrisma } from "@omni/database";
 import { buildServer } from "./server.js";
 import { assertLocalBindSafety } from "./local-identity.js";
+
+loadRootEnv();
 
 async function main(): Promise<void> {
   if (!process.env.AUTH_SECRET && process.env.NODE_ENV === "production") {

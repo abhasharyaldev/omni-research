@@ -55,6 +55,61 @@ export class RunCancelledError extends Error {
   }
 }
 
+/**
+ * Hard wall-clock cap around a crawl wave. crawlPages has an internal duration
+ * watchdog, but Crawlee's stop() cannot interrupt a request already blocked
+ * in-flight (an unresponsive host, or a bot-walled page). Without an external
+ * cap such a wave can hang the single worker indefinitely and jam every queued
+ * run. This races the crawl against a timeout that resolves to an all-failed
+ * outcome so the pipeline always moves on; in the normal case the internal
+ * watchdog stops things first and this never fires.
+ */
+const HARD_CRAWL_GRACE_MS = 60_000;
+
+/**
+ * Citation location for a video transcript: the `[hh:mm:ss]` marker on the line
+ * that contains the cited evidence (transcript lines are `[hh:mm:ss] text`).
+ * Falls back to undefined so the caller can use a generic locator.
+ */
+function videoTimestampFor(mainText: string, evidenceText: string): string | undefined {
+  const needle = evidenceText.slice(0, 60).toLowerCase();
+  const idx = mainText.toLowerCase().indexOf(needle);
+  if (idx < 0) return undefined;
+  const marks = mainText.slice(0, idx).match(/\[(\d{2}:\d{2}:\d{2})\]/g);
+  const last = marks?.[marks.length - 1];
+  return last ? last.replace(/[[\]]/g, "") : undefined;
+}
+
+async function crawlWaveWithHardCap(
+  options: Parameters<typeof crawlPages>[0],
+  hardTimeoutMs: number
+): Promise<Awaited<ReturnType<typeof crawlPages>>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<Awaited<ReturnType<typeof crawlPages>>>((resolve) => {
+    timer = setTimeout(
+      () =>
+        resolve({
+          retrieved: [],
+          skipped: [],
+          failed: options.tasks.map((t) => ({
+            url: t.url,
+            userData: t.userData,
+            error: "crawl-timeout: source did not respond within the hard duration cap and was abandoned",
+            retries: 0,
+          })),
+          totalBytesDownloaded: 0,
+          cancelled: false,
+        }),
+      hardTimeoutMs
+    );
+  });
+  try {
+    return await Promise.race([crawlPages(options), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 const emptyCounters = (): Counters => ({
   pagesDiscovered: 0,
   pagesQueued: 0,
@@ -113,7 +168,14 @@ export async function runResearchPipeline(deps: PipelineDeps, runId: string): Pr
 
   const run = await prisma.researchRun.findUniqueOrThrow({
     where: { id: runId },
-    include: { project: { include: { topics: { orderBy: { order: "asc" } } } } },
+    include: {
+      project: {
+        include: {
+          owner: { select: { defaultProvider: true } },
+          topics: { orderBy: { order: "asc" } },
+        },
+      },
+    },
   });
   const project = run.project;
   const settings = ((run.limitsJson as RunSettings | null) ?? {}) as RunSettings;
@@ -122,7 +184,7 @@ export async function runResearchPipeline(deps: PipelineDeps, runId: string): Pr
     if (await deps.isCancelled()) throw new RunCancelledError();
   };
 
-  const providerId = (project.provider ?? providers.defaultId()) as ProviderId;
+  const providerId = (project.provider ?? project.owner.defaultProvider ?? providers.defaultId()) as ProviderId;
   const provider: SubscriptionAIProvider = providers.get(providerId);
 
   const limits: CrawlLimits = clampCrawlLimits({
@@ -262,6 +324,7 @@ export async function runResearchPipeline(deps: PipelineDeps, runId: string): Pr
   const acceptedPages: RetrievedPage[] = [];
   const seenNormalized = new Set<string>();
   const sourceIdByPage = new Map<RetrievedPage, string>();
+  let videoNoTranscriptSkips = 0; // videos skipped for lack of captions
   const evidenceRows: EvidenceRow[] = [];
   let evidenceBatchCounter = 0;
 
@@ -303,23 +366,26 @@ export async function runResearchPipeline(deps: PipelineDeps, runId: string): Pr
     await deps.emit("queuing-pages", `Queued ${tasks.length} page(s) at depth ${depth}`, counters);
     await deps.emit("crawling", `Crawling depth ${depth}`, counters);
 
-    const outcome = await crawlPages({
-      tasks,
-      limits: {
-        ...limits,
-        maxPagesPerRun: Math.max(1, Math.min(limits.maxPagesPerRun - counters.pagesCompleted, maxSources - acceptedPages.length + 5)),
+    const outcome = await crawlWaveWithHardCap(
+      {
+        tasks,
+        limits: {
+          ...limits,
+          maxPagesPerRun: Math.max(1, Math.min(limits.maxPagesPerRun - counters.pagesCompleted, maxSources - acceptedPages.length + 5)),
+        },
+        policy,
+        userAgent,
+        storageDir: path.join(deps.storageRoot ?? ".local-data", "crawlee", runId),
+        runId,
+        shouldCancel: () => false, // cooperative cancel handled between stages
+        onEvent: (event) => {
+          if (event.kind === "retrieved") counters.pagesCompleted++;
+          if (event.kind === "skipped") counters.pagesSkipped++;
+          if (event.kind === "failed") counters.pagesFailed++;
+        },
       },
-      policy,
-      userAgent,
-      storageDir: path.join(deps.storageRoot ?? ".local-data", "crawlee", runId),
-      runId,
-      shouldCancel: () => false, // cooperative cancel handled between stages
-      onEvent: (event) => {
-        if (event.kind === "retrieved") counters.pagesCompleted++;
-        if (event.kind === "skipped") counters.pagesSkipped++;
-        if (event.kind === "failed") counters.pagesFailed++;
-      },
-    });
+      limits.maxRunDurationMs + HARD_CRAWL_GRACE_MS
+    );
 
     for (const page of outcome.retrieved) {
       const normalized = normalizeUrl(page.finalUrl) ?? normalizeUrl(page.requestedUrl);
@@ -331,6 +397,7 @@ export async function runResearchPipeline(deps: PipelineDeps, runId: string): Pr
       }
     }
     for (const skip of outcome.skipped) {
+      if (skip.reason === "no-transcript") videoNoTranscriptSkips++;
       await prisma.crawlRequest.updateMany({
         where: { runId, normalizedUrl: normalizeUrl(skip.url) ?? skip.url },
         data: { status: "skipped", skipReason: `${skip.reason}: ${skip.detail}`.slice(0, 490) },
@@ -608,7 +675,11 @@ export async function runResearchPipeline(deps: PipelineDeps, runId: string): Pr
           sourceQuality: classified.qualityScore,
           sourceClassification: classified.classification,
           pageNumber,
-          sourceLocation: pageNumber ? `page ${pageNumber}` : locateExcerpt(page.mainText, item.evidenceText),
+          sourceLocation: pageNumber
+            ? `page ${pageNumber}`
+            : page.crawlMethod === "video"
+              ? (videoTimestampFor(page.mainText, item.evidenceText) ?? locateExcerpt(page.mainText, item.evidenceText))
+              : locateExcerpt(page.mainText, item.evidenceText),
           flaggedInjection: injection.flagged,
         });
       }
@@ -783,6 +854,12 @@ export async function runResearchPipeline(deps: PipelineDeps, runId: string): Pr
   await deps.emit("comparing-claims", `Stored ${counters.evidenceRecords} evidence record(s)`, counters);
 
   if (evidenceRows.length === 0) {
+    if (videoNoTranscriptSkips > 0 && acceptedPages.length === 0) {
+      throw new Error(
+        `No transcript was available for the video source(s) (${videoNoTranscriptSkips} skipped for missing captions), and no other sources produced evidence. ` +
+          "Use captioned videos, paste/import a transcript, or add non-video sources — OmniResearch will not write a report without stored evidence."
+      );
+    }
     throw new Error(
       "No verifiable evidence could be extracted from the crawled sources. The sources were saved to the library. " +
         "Try adding more substantial sources or increasing the source limit — OmniResearch will not write a report without stored evidence."

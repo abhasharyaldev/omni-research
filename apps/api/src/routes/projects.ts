@@ -137,6 +137,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       crawlLimits: input.crawlLimits,
       excludeDomains: input.excludeDomains,
       extraUrls: input.extraUrls,
+      forceReplan: input.forceReplan,
     });
     await audit(user.id, "run.preview", "project", id, request, {
       candidates: preview.candidates.length,

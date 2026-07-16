@@ -4,6 +4,7 @@ import { getProviderManager } from "@omni/ai-providers";
 import { PROVIDER_IDS, newId, type ProviderId } from "@omni/shared";
 import { requireUser } from "../auth.js";
 import { ApiHttpError, audit } from "../util.js";
+import { resetLocalIdentityCache } from "../local-identity.js";
 
 function parseProviderId(raw: string): ProviderId {
   if (!PROVIDER_IDS.includes(raw as ProviderId)) {
@@ -103,6 +104,7 @@ export async function registerProviderRoutes(app: FastifyInstance): Promise<void
     const user = requireUser(request);
     const id = parseProviderId((request.params as { id: string }).id);
     await prisma.user.update({ where: { id: user.id }, data: { defaultProvider: id } });
+    resetLocalIdentityCache();
     await audit(user.id, "provider.set-default", "provider", id, request);
     return { ok: true, defaultProvider: id };
   });

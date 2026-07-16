@@ -5,10 +5,12 @@
  *
  * Usage: pnpm check:providers
  */
+import { loadRootEnv } from "@omni/shared/env";
 import { getProviderManager } from "@omni/ai-providers";
 import { detectBillingSensitiveVars } from "@omni/security";
 
 async function main(): Promise<void> {
+  loadRootEnv();
   console.log("OmniResearch — AI provider readiness\n");
   const manager = getProviderManager();
   const reports = await manager.statusAll();

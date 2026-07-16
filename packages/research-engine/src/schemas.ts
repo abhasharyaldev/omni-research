@@ -2,13 +2,19 @@ import { z } from "zod";
 
 /** Structured-output contracts between the engines and AI providers. */
 
+function truncateStringArray(value: unknown, maxItems: number, maxLength: number): unknown {
+  return Array.isArray(value)
+    ? value.slice(0, maxItems).map((item) => (typeof item === "string" ? item.trim().slice(0, maxLength) : item))
+    : value;
+}
+
 export const planOutputSchema = z.object({
   mainQuestion: z.string().min(1).max(500),
-  subquestions: z.array(z.string().min(1).max(500)).min(1).max(30),
-  keyTerms: z.array(z.string().max(80)).max(30).default([]),
-  discoveryQueries: z.array(z.string().max(200)).max(30).default([]),
-  sourceCategories: z.array(z.string().max(60)).max(15).default([]),
-  outline: z.array(z.string().max(200)).max(30).default([]),
+  subquestions: z.preprocess((value) => truncateStringArray(value, 30, 500), z.array(z.string().min(1).max(500)).min(1).max(30)),
+  keyTerms: z.preprocess((value) => truncateStringArray(value, 30, 80), z.array(z.string().max(80)).max(30).default([])),
+  discoveryQueries: z.preprocess((value) => truncateStringArray(value, 30, 200), z.array(z.string().max(200)).max(30).default([])),
+  sourceCategories: z.preprocess((value) => truncateStringArray(value, 15, 60), z.array(z.string().max(60)).max(15).default([])),
+  outline: z.preprocess((value) => truncateStringArray(value, 30, 200), z.array(z.string().max(200)).max(30).default([])),
 });
 export type PlanOutput = z.infer<typeof planOutputSchema>;
 
@@ -17,8 +23,8 @@ export const PLAN_SCHEMA_DESCRIPTION = `{
   "subquestions": ["string"],
   "keyTerms": ["string"],
   "discoveryQueries": ["string"],
-  "sourceCategories": ["string"],
-  "outline": ["string"]
+  "sourceCategories": ["string, max 60 characters each"],
+  "outline": ["string, max 200 characters each"]
 }`;
 
 export const evidenceOutputSchema = z.object({

@@ -7,10 +7,12 @@
  *   pnpm test:provider:gemini
  *   pnpm test:provider:ollama
  */
+import { loadRootEnv } from "@omni/shared/env";
 import { getProviderManager } from "@omni/ai-providers";
 import { PROVIDER_IDS, type ProviderId } from "@omni/shared";
 
 async function main(): Promise<void> {
+  loadRootEnv();
   const id = process.argv[2] as ProviderId | undefined;
   if (!id || !PROVIDER_IDS.includes(id)) {
     console.error(`Usage: tsx scripts/provider-smoke.ts <${PROVIDER_IDS.join("|")}>`);

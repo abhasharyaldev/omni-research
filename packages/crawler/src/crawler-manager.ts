@@ -24,6 +24,7 @@ import {
 } from "./url-normalizer.js";
 import { fetchPdf } from "./pdf-extractor.js";
 import { crawlWithPlaywright, playwrightAvailability } from "./crawlers/playwright-crawler.js";
+import { extractVideoSource, isVideoUrl } from "./video-source.js";
 
 crawleeLog.setLevel(LogLevel.OFF);
 
@@ -63,6 +64,7 @@ export async function crawlPages(options: CrawlOptions): Promise<CrawlOutcome> {
   // ---- Pre-queue validation & routing -------------------------------------
   const htmlTasks: CrawlTask[] = [];
   const pdfTasks: CrawlTask[] = [];
+  const videoTasks: CrawlTask[] = [];
 
   for (const task of tasks) {
     const normalized = normalizeUrl(task.url);
@@ -94,6 +96,14 @@ export async function crawlPages(options: CrawlOptions): Promise<CrawlOutcome> {
       continue;
     }
     const domain = domainOf(normalized);
+    // Video-platform URLs are not HTML-crawled; they are "watched" — routed to
+    // the video transcript extractor below and returned as video RetrievedPages.
+    if (isVideoUrl(normalized)) {
+      seenUrls.add(normalized);
+      videoTasks.push({ url: normalized, userData: task.userData });
+      emit({ kind: "queued", url: normalized });
+      continue;
+    }
     const planned = (domainCounts.get(domain) ?? 0) + 1;
     if (planned > limits.maxPagesPerDomain) {
       recordSkip(task.url, "crawl-limit-reached", `Domain page limit ${limits.maxPagesPerDomain} reached for ${domain}`, task.userData);
@@ -147,6 +157,36 @@ export async function crawlPages(options: CrawlOptions): Promise<CrawlOutcome> {
       emit({ kind: "failed", url: task.url, error: (err as Error).message.slice(0, 200) });
     } finally {
       limiter.release(domain);
+    }
+  }
+
+  // ---- Video route (transcript extraction, not HTML crawl) ----------------
+  for (const task of videoTasks) {
+    if (shouldCancel?.() || Date.now() > deadline) {
+      cancelled = cancelled || Boolean(shouldCancel?.());
+      recordSkip(task.url, cancelled ? "cancelled" : "crawl-limit-reached", cancelled ? "Run cancelled" : "Run duration limit reached", task.userData);
+      continue;
+    }
+    emit({ kind: "crawling", url: task.url, domain: domainOf(task.url) });
+    // Bound each extraction by the remaining run duration via an abort signal.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1000, deadline - Date.now()));
+    let outcome;
+    try {
+      outcome = await extractVideoSource(task, { policy, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if ("retrieved" in outcome) {
+      totalBytes += Buffer.byteLength(outcome.retrieved.mainText);
+      retrieved.push(outcome.retrieved);
+      emit({ kind: "retrieved", url: task.url, finalUrl: outcome.retrieved.finalUrl, wordCount: outcome.retrieved.wordCount });
+    } else if ("skipped" in outcome) {
+      skipped.push(outcome.skipped);
+      emit({ kind: "skipped", url: task.url, reason: outcome.skipped.reason, detail: outcome.skipped.detail.slice(0, 200) });
+    } else {
+      failed.push(outcome.failed);
+      emit({ kind: "failed", url: task.url, error: outcome.failed.error.slice(0, 200) });
     }
   }
 
