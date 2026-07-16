@@ -7,6 +7,11 @@ import { ApiHttpError, audit, requireRun } from "../util.js";
 export async function registerRunRoutes(app: FastifyInstance): Promise<void> {
   const prisma = getPrisma();
 
+  const staleRunCutoff = () => {
+    const staleAfterMs = Number(process.env.STALE_RUN_AFTER_MS || 60_000);
+    return new Date(Date.now() - staleAfterMs);
+  };
+
   app.get("/api/research-runs/:id", async (request) => {
     const user = requireUser(request);
     const { id } = request.params as { id: string };
@@ -61,12 +66,20 @@ export async function registerRunRoutes(app: FastifyInstance): Promise<void> {
     const user = requireUser(request);
     const { id } = request.params as { id: string };
     const run = await requireRun(id, user.id);
-    if (run.status !== "paused" && run.status !== "cancelled" && run.status !== "failed") {
+    const isStaleRunning = run.status === "running" && run.updatedAt < staleRunCutoff();
+    const isPausePending = run.status === "running" && run.error === "pause-requested";
+    if (run.status !== "paused" && run.status !== "cancelled" && run.status !== "failed" && !isStaleRunning && !isPausePending) {
       throw new ApiHttpError(409, "not-resumable", `Run is ${run.status}`);
     }
     await prisma.researchRun.update({
       where: { id },
-      data: { status: "queued", cancelRequested: false, error: null },
+      data: {
+        status: isPausePending ? "running" : "queued",
+        cancelRequested: false,
+        error: isStaleRunning
+          ? `Recovered from stale running state at stage "${run.stage}". Retrying with saved work.`
+          : null,
+      },
     });
     await audit(user.id, "run.resume", "research-run", id, request);
     return { ok: true };

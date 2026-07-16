@@ -1,9 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiPost, ApiError } from "@/lib/api";
 import type { RunPreview } from "@omni/shared";
+
+/** Reassuring, roughly time-accurate status while the ~55s plan call runs. */
+function waitMessage(sec: number): string {
+  if (sec < 4) return "Generating the research plan…";
+  if (sec < 15) return "Working through subquestions and key terms…";
+  if (sec < 30) return "Drafting discovery queries…";
+  if (sec < 50) return "Finalizing the plan — this usually takes ~50–60s…";
+  return "Almost there — wrapping up…";
+}
 
 /**
  * Research-run preview dialog: shows what WOULD be crawled (discovered URLs,
@@ -26,8 +35,23 @@ export function RunPreviewDialog({ projectId, onClose }: { projectId: string; on
   const [extraUrl, setExtraUrl] = useState("");
   const [excludeDomain, setExcludeDomain] = useState("");
   const [excludedDomains, setExcludedDomains] = useState<string[]>([]);
+  const [elapsed, setElapsed] = useState(0);
 
-  const loadPreview = async (extraUrls: string[] = [], domains: string[] = excludedDomains) => {
+  // Tick an elapsed-seconds counter while a preview is building so the wait
+  // shows visible progress instead of a static spinner that reads as a hang.
+  useEffect(() => {
+    if (!loading) return;
+    setElapsed(0);
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [loading]);
+
+  const loadPreview = async (
+    extraUrls: string[] = [],
+    domains: string[] = excludedDomains,
+    forceReplan = false
+  ) => {
     setLoading(true);
     setError(null);
     try {
@@ -36,6 +60,7 @@ export function RunPreviewDialog({ projectId, onClose }: { projectId: string; on
         crawlLimits: { maxDepth },
         excludeDomains: domains,
         extraUrls,
+        forceReplan,
       });
       setPreview(response.preview);
       const next: Record<string, boolean> = {};
@@ -110,8 +135,13 @@ export function RunPreviewDialog({ projectId, onClose }: { projectId: string; on
               </div>
             </div>
             <button className="btn btn-primary" disabled={loading} onClick={() => loadPreview()}>
-              {loading ? "Building preview…" : "Build preview"}
+              {loading ? `${waitMessage(elapsed)} (${elapsed}s)` : "Build preview"}
             </button>
+            {loading && (
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                The first preview builds the research plan (~1 min). Adjusting sources afterward is instant.
+              </p>
+            )}
           </div>
         )}
 
@@ -166,12 +196,16 @@ export function RunPreviewDialog({ projectId, onClose }: { projectId: string; on
                     <span className="block truncate" style={{ color: "var(--muted)" }}>{candidate.url}</span>
                     <span className="mt-0.5 flex flex-wrap gap-1">
                       <span className="badge">{candidate.providerId}</span>
-                      {candidate.robots === "disallowed" && <span className="badge badge-bad">robots.txt disallows</span>}
-                      {candidate.robots === "allowed" && <span className="badge badge-good">robots ok</span>}
+                      {!candidate.flags.includes("video-transcript-source") && candidate.robots === "disallowed" && <span className="badge badge-bad">robots.txt disallows</span>}
+                      {!candidate.flags.includes("video-transcript-source") && candidate.robots === "allowed" && <span className="badge badge-good">robots ok</span>}
                       {candidate.publishedAt && <span className="badge">{new Date(candidate.publishedAt).toLocaleDateString()}</span>}
-                      {candidate.flags.map((flag) => (
-                        <span key={flag} className="badge badge-warn">{flag}</span>
-                      ))}
+                      {candidate.flags.map((flag) =>
+                        flag === "video-transcript-source" ? (
+                          <span key={flag} className="badge badge-accent" title="Transcribed via captions when the run starts">🎬 video transcript source</span>
+                        ) : (
+                          <span key={flag} className="badge badge-warn">{flag}</span>
+                        )
+                      )}
                     </span>
                   </span>
                   <button
@@ -243,8 +277,13 @@ export function RunPreviewDialog({ projectId, onClose }: { projectId: string; on
               <button className="btn btn-primary" disabled={starting || includedCount === 0} onClick={approve}>
                 {starting ? "Starting…" : `Approve & crawl ${includedCount} source(s)`}
               </button>
-              <button className="btn" disabled={loading} onClick={() => loadPreview()}>
-                Rebuild preview
+              <button
+                className="btn"
+                disabled={loading}
+                title="Regenerate the research plan from scratch (use after editing project settings)"
+                onClick={() => loadPreview([], excludedDomains, true)}
+              >
+                {loading ? `Rebuilding… (${elapsed}s)` : "Rebuild preview"}
               </button>
             </div>
           </div>

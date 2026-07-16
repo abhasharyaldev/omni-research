@@ -12,6 +12,7 @@ export * from "./citation-builder.js";
 export * from "./rss-extractor.js";
 export * from "./sitemap-extractor.js";
 export * from "./pdf-extractor.js";
+export * from "./video-source.js";
 export * from "./source-discovery.js";
 export * from "./web-search-providers.js";
 export { playwrightAvailability } from "./crawlers/playwright-crawler.js";

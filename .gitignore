@@ -7,6 +7,8 @@ coverage/
 .env.local
 .local-data/
 .local-ai-workspaces/
+.local-tools/
+.local-logs/
 storage/
 crawlee-storage/
 vendor/crawlee/

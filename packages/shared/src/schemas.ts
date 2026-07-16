@@ -108,6 +108,10 @@ export const previewRunSchema = z.object({
   crawlLimits: crawlLimitsSchema.optional(),
   excludeDomains: domainListSchema.optional(),
   extraUrls: z.array(z.string().trim().url().max(2000)).max(100).optional(),
+  // Force a fresh plan (skip the in-memory plan cache). Wired to the dialog's
+  // "Rebuild preview" button so a user who edited project settings can force
+  // regeneration; ordinary re-previews reuse the cached plan and stay instant.
+  forceReplan: z.boolean().optional(),
 });
 
 export const searchQuerySchema = z.object({

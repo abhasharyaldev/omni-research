@@ -10,6 +10,8 @@ import { buildNewsBriefing } from "@omni/news-engine";
  * Returns true when a run was claimed.
  */
 export async function claimAndExecuteRun(prisma: PrismaClient = getPrisma()): Promise<boolean> {
+  await recoverStaleRunningRuns(prisma);
+
   const candidate = await prisma.researchRun.findFirst({
     where: { status: "queued" },
     orderBy: { createdAt: "asc" },
@@ -27,8 +29,48 @@ export async function claimAndExecuteRun(prisma: PrismaClient = getPrisma()): Pr
   return true;
 }
 
+function staleRunCutoff(): Date {
+  const staleAfterMs = Number(process.env.STALE_RUN_AFTER_MS || 60_000);
+  return new Date(Date.now() - staleAfterMs);
+}
+
+export async function recoverStaleRunningRuns(prisma: PrismaClient = getPrisma()): Promise<number> {
+  const staleRuns = await prisma.researchRun.findMany({
+    where: { status: "running", updatedAt: { lt: staleRunCutoff() } },
+    select: { id: true, stage: true },
+    take: 10,
+  });
+  for (const run of staleRuns) {
+    const recovered = await prisma.researchRun.updateMany({
+      where: { id: run.id, status: "running", updatedAt: { lt: staleRunCutoff() } },
+      data: {
+        status: "queued",
+        cancelRequested: false,
+        error: `Recovered from stale running state at stage "${run.stage}". The previous worker stopped before finishing; retrying with saved work.`,
+      },
+    });
+    if (recovered.count === 1) {
+      await prisma.runEvent.create({
+        data: {
+          id: newId("ev"),
+          runId: run.id,
+          stage: run.stage,
+          message: "Recovered stale running run and re-queued it. Saved crawl/source work will be reused where possible.",
+        },
+      });
+      console.log(`[worker] recovered stale run ${run.id} from ${run.stage}`);
+    }
+  }
+  return staleRuns.length;
+}
+
 export async function executeRun(prisma: PrismaClient, runId: string): Promise<void> {
   const providers = getProviderManager();
+  const heartbeat = setInterval(() => {
+    prisma.researchRun
+      .update({ where: { id: runId }, data: { updatedAt: new Date() } })
+      .catch(() => undefined);
+  }, 15_000);
 
   const emit: PipelineDeps["emit"] = async (
     stage: ResearchStage,
@@ -119,5 +161,7 @@ export async function executeRun(prisma: PrismaClient, runId: string): Promise<v
         message: `Run failed: ${message}. Work completed before the failure (sources, evidence) is preserved.`,
       },
     });
+  } finally {
+    clearInterval(heartbeat);
   }
 }

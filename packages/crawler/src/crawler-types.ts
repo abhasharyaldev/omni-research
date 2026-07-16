@@ -38,7 +38,7 @@ export type RetrievedPage = {
   userData: ResearchRequestData;
   status: number;
   contentType: string;
-  crawlMethod: "cheerio" | "playwright" | "feed" | "pdf" | "direct";
+  crawlMethod: "cheerio" | "playwright" | "feed" | "pdf" | "direct" | "video";
   retrievedAt: Date;
   metadata: ExtractedMetadata;
   mainText: string;

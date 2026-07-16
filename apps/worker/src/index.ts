@@ -1,6 +1,9 @@
+import { loadRootEnv } from "@omni/shared/env";
 import { bootstrapDatabase, cleanupExpiredContent, getPrisma } from "@omni/database";
 import { sleep } from "@omni/shared";
 import { claimAndExecuteRun } from "./run-executor.js";
+
+loadRootEnv();
 
 /**
  * Research worker: a database-backed job loop (the local queue fallback —

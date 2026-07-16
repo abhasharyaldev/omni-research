@@ -33,6 +33,12 @@ const STAGE_TASK: Record<StoryStage, AiTaskKind> = {
   critique: "story-critique",
 };
 
+function staleStoryInvocationCutoff(): Date {
+  const timeoutMs = Number(process.env.AI_PROCESS_TIMEOUT_MS || 180_000);
+  const staleAfterMs = Number(process.env.STALE_STORY_INVOCATION_AFTER_MS || Math.max(timeoutMs + 30_000, 240_000));
+  return new Date(Date.now() - staleAfterMs);
+}
+
 /**
  * OmniResearch's own structured story-planning instructions — the documented
  * FALLBACK used when the installed storytelling skill is not available. It is
@@ -129,28 +135,57 @@ export class StorytellingEngine {
     const skills = detectStorytellingSkills();
     const { text: craft, method } = skillInstructionBlock(skills.storytelling, skills.viralHooks, stage);
     const effectiveMethod = providerId === "mock" ? "mock" : method;
+    const staleCutoff = staleStoryInvocationCutoff();
+
+    await this.prisma.storyInvocation.updateMany({
+      where: { storyId, status: "pending", createdAt: { lt: staleCutoff } },
+      data: {
+        status: "failed",
+        error: "Marked failed because the previous story generation request stopped before completing. You can retry safely.",
+      },
+    });
+
+    const pending = await this.prisma.storyInvocation.findFirst({
+      where: { storyId, status: "pending", createdAt: { gte: staleCutoff } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (pending) {
+      throw new Error(`Storytelling stage "${pending.stage}" is already running. Wait for it to finish, or retry after the stale timeout.`);
+    }
 
     const priorScript = stage === "critique" ? await this.latest(storyId, "script") : null;
-    const fenced = fenceExcerpts(
-      [
-        {
-          sourceId: "research-package",
-          title: `Research package v${pkg.packageVersion}`,
-          url: "",
-          text: renderPackageForPrompt(pkg),
-          instructionPolicy: "data-only",
-        },
-      ],
-      `story-${storyId}`
-    );
+    const sourceExcerpts = [
+      {
+        sourceId: "research-package",
+        title: `Research package v${pkg.packageVersion}`,
+        url: "",
+        text: renderPackageForPrompt(pkg),
+        instructionPolicy: "data-only" as const,
+      },
+    ];
+    const parsedPriorScript = stage === "critique" && priorScript ? scriptSchema.parse(priorScript.contentJson) : null;
+    const draftScriptForCritique = parsedPriorScript
+      ? parsedPriorScript.lines.map((line, index) => `[${index}] ${line.text}`).join("\n")
+      : "";
+    if (stage === "critique" && priorScript && parsedPriorScript) {
+      sourceExcerpts.push({
+        sourceId: "draft-script",
+        title: `Draft script v${priorScript.version}`,
+        url: "",
+        text: draftScriptForCritique,
+        instructionPolicy: "data-only",
+      });
+    }
+    const fenced = fenceExcerpts(sourceExcerpts, `story-${storyId}`);
 
     const instructions = [
       `You are the storytelling stage "${stage}" of a research-to-video pipeline.`,
       `Story mode: ${story.resolvedMode}. Framework: ${story.framework}. Platform: ${story.platform}. Target duration: ${story.targetDurationSec}s (≈${story.targetDurationSec * 2} spoken words).`,
       `Audience: ${settings.audience ?? "general"}. Tone: ${settings.tone ?? "clear"}. Pace: ${settings.pace ?? "moderate"}. Suspense: ${settings.suspense ?? "medium"}. Technical depth: ${settings.technicalDepth ?? "beginner"}. Narration: ${settings.narration ?? "third-person"} (${settings.delivery ?? "conversational"}).`,
       craft,
+      draftScriptForCritique ? `DRAFT SCRIPT TO AUDIT (trusted app-generated lines; quote exact line text and line index in critique findings):\n${draftScriptForCritique}` : "",
       "HARD RULES: use only facts from the fenced research package; cite evidence refs (E1, E2…) on every factual element; preserve the distinction between fact, reported claim, interpretation, inference, speculation, and unknown; present DISPUTED claims as disputed or omit them; respect the PROHIBITED list. Do not invent citations.",
-      stage === "critique" ? "Critique the DRAFT SCRIPT provided in context against the skill's audit checklist. Quote offending lines exactly." : "",
+      stage === "critique" ? "Critique the DRAFT SCRIPT source block against the skill's audit checklist. Quote offending lines exactly and include their line indexes." : "",
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -165,6 +200,20 @@ export class StorytellingEngine {
     };
 
     const started = Date.now();
+    const invocation = await this.prisma.storyInvocation.create({
+      data: {
+        id: newId("sin"),
+        storyId,
+        stage,
+        providerId,
+        skillId: skills.storytelling?.id,
+        skillHash: skills.storytelling?.contentHash,
+        method: effectiveMethod,
+        status: "pending",
+        durationMs: 0,
+        packageVersion: pkg.packageVersion,
+      },
+    });
     let content: unknown;
     try {
       content = await provider.generateStructured(
@@ -186,19 +235,12 @@ export class StorytellingEngine {
         schemas[stage].schema
       );
     } catch (err) {
-      await this.prisma.storyInvocation.create({
+      await this.prisma.storyInvocation.update({
+        where: { id: invocation.id },
         data: {
-          id: newId("sin"),
-          storyId,
-          stage,
-          providerId,
-          skillId: skills.storytelling?.id,
-          skillHash: skills.storytelling?.contentHash,
-          method: effectiveMethod,
           status: "failed",
           error: String((err as Error).message).slice(0, 900),
           durationMs: Date.now() - started,
-          packageVersion: pkg.packageVersion,
         },
       });
       // NEVER silently fall back — surface the failure with options.
@@ -213,19 +255,32 @@ export class StorytellingEngine {
       const vetted = vetHooks(pkg, content as any);
       content = { hooks: vetted.accepted, rejected: vetted.rejected.map((r) => ({ text: r.hook.text, reason: r.reason })) };
     }
+    if (stage === "critique" && parsedPriorScript) {
+      const critique = content as { overallAssessment?: string; findings?: unknown[] };
+      if (/no draft script|draft script (?:was )?not provided|missing draft/i.test(critique.overallAssessment ?? "")) {
+        const validation = validateScript(pkg, parsedPriorScript);
+        content = {
+          findings: validation.issues.slice(0, 20).map((issue) => ({
+            category: "unsupported-drama",
+            offendingLine: issue.text,
+            lineIndex: issue.lineIndex,
+            problem: issue.detail,
+            suggestedRevision:
+              issue.code === "disputed-stated-as-fact"
+                ? "Rewrite this as disputed or uncertain, preserving the evidence reference and avoiding a flat factual claim."
+                : "Revise this line so the wording is directly supported by the cited evidence, or remove it.",
+          })),
+          overallAssessment:
+            `Provider critique did not attach to the draft, so OmniResearch generated this deterministic review from validation. ${validation.summary}`,
+        };
+      }
+    }
 
-    await this.prisma.storyInvocation.create({
+    await this.prisma.storyInvocation.update({
+      where: { id: invocation.id },
       data: {
-        id: newId("sin"),
-        storyId,
-        stage,
-        providerId,
-        skillId: skills.storytelling?.id,
-        skillHash: skills.storytelling?.contentHash,
-        method: effectiveMethod,
         status: "success",
         durationMs: Date.now() - started,
-        packageVersion: pkg.packageVersion,
       },
     });
 

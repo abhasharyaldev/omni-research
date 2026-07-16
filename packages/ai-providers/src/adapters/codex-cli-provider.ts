@@ -1,3 +1,4 @@
+import path from "node:path";
 import { CliProviderBase } from "./cli-base.js";
 
 /**
@@ -12,12 +13,28 @@ export class CodexCliProvider extends CliProviderBase {
   id = "codex-cli" as const;
   displayName = "OpenAI Codex CLI";
 
+  private nodeEntry(): string | undefined {
+    const configured = process.env.CODEX_CLI_NODE_ENTRY;
+    return configured ? path.resolve(process.env.OMNI_ENV_ROOT ?? process.cwd(), configured) : undefined;
+  }
+
   protected executable(): string {
+    if (this.nodeEntry()) return process.execPath;
     return process.env.CODEX_CLI_PATH || "codex";
   }
 
   protected generationArgs(): string[] {
+    const nodeEntry = this.nodeEntry();
+    if (nodeEntry) {
+      return [nodeEntry, "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"];
+    }
     return ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"];
+  }
+
+  protected versionArgs(): string[] {
+    const nodeEntry = this.nodeEntry();
+    if (nodeEntry) return [nodeEntry, "--version"];
+    return super.versionArgs();
   }
 
   protected parseOutput(stdout: string): string {

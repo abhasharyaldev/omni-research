@@ -47,7 +47,7 @@ export async function apiSend<T = any>(
       "content-type": "application/json",
       "x-omni-csrf": "1",
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: JSON.stringify(body ?? {}),
   });
   return handle(response);
 }
